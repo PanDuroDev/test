@@ -73,10 +73,7 @@ impl ViewportTransform {
         new_zoom: f64,
         screen_anchor: DVec2,
     ) -> Result<(), TransformError> {
-        if !new_zoom.is_finite()
-            || !screen_anchor.x.is_finite()
-            || !screen_anchor.y.is_finite()
-        {
+        if !new_zoom.is_finite() || !screen_anchor.x.is_finite() || !screen_anchor.y.is_finite() {
             return Err(TransformError::NonFiniteValue);
         }
         if new_zoom <= 0.0 {
@@ -141,12 +138,8 @@ mod tests {
 
     #[test]
     fn canvas_screen_round_trip_survives_pan_zoom_and_rotation() {
-        let transform = ViewportTransform::new(
-            2.75,
-            0.73,
-            DVec2::new(120.0, -42.0),
-        )
-        .expect("valid transform");
+        let transform =
+            ViewportTransform::new(2.75, 0.73, DVec2::new(120.0, -42.0)).expect("valid transform");
         let point = DVec2::new(1_000_000.25, -900_000.5);
 
         let screen = transform.canvas_to_screen(point);
@@ -157,12 +150,8 @@ mod tests {
 
     #[test]
     fn zoom_keeps_the_anchor_fixed_on_screen() {
-        let mut transform = ViewportTransform::new(
-            1.5,
-            0.4,
-            DVec2::new(80.0, 25.0),
-        )
-        .expect("valid transform");
+        let mut transform =
+            ViewportTransform::new(1.5, 0.4, DVec2::new(80.0, 25.0)).expect("valid transform");
         let anchor = DVec2::new(320.0, 180.0);
         let document_point = transform.screen_to_canvas(anchor);
         assert_vec2_near(transform.canvas_to_screen(document_point), anchor);
@@ -174,16 +163,14 @@ mod tests {
 
     #[test]
     fn rotation_keeps_the_anchor_fixed_on_screen() {
-        let mut transform = ViewportTransform::new(
-            2.0,
-            0.2,
-            DVec2::new(12.0, 18.0),
-        )
-        .expect("valid transform");
+        let mut transform =
+            ViewportTransform::new(2.0, 0.2, DVec2::new(12.0, 18.0)).expect("valid transform");
         let anchor = DVec2::new(450.0, 250.0);
         let document_point = transform.screen_to_canvas(anchor);
 
-        transform.rotate_around(1.2, anchor).expect("valid rotation");
+        transform
+            .rotate_around(1.2, anchor)
+            .expect("valid rotation");
 
         assert_vec2_near(transform.canvas_to_screen(document_point), anchor);
     }
@@ -199,8 +186,7 @@ mod tests {
             Err(TransformError::NonFiniteValue)
         );
 
-        let mut transform =
-            ViewportTransform::new(1.0, 0.0, DVec2::ZERO).expect("valid transform");
+        let mut transform = ViewportTransform::new(1.0, 0.0, DVec2::ZERO).expect("valid transform");
         assert_eq!(
             transform.zoom_around(-1.0, DVec2::ZERO),
             Err(TransformError::NonPositiveZoom)
