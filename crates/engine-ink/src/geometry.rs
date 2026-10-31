@@ -447,11 +447,7 @@ mod tests {
 
     #[test]
     fn sharp_turns_respect_the_miter_limit() {
-        let input = dabs(&[
-            (0.0, 0.0, 1.0),
-            (20.0, 0.0, 1.0),
-            (10.0, 0.1, 1.0),
-        ]);
+        let input = dabs(&[(0.0, 0.0, 1.0), (20.0, 0.0, 1.0), (10.0, 0.1, 1.0)]);
         let config = StrokeGeometryConfig::new(2.0, 8, 10_000).expect("valid config");
         let mesh = tessellate_stroke_mesh(&input, config).expect("bounded mesh");
         let corner_index = input
