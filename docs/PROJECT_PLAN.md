@@ -433,6 +433,6 @@ target/renderer-spike.png
 - 2026-10-31: دمج المرحلة 3 عبر PR #10 بالالتزام `b40141d4257f00d250e5b0f26a825cc8dc4ddd36` بعد نجاح 40 اختبارًا على كل نظام وفحوص format وClippy.
 - 2026-10-31: بدء المرحلة 4 عبر Issue #11؛ إنشاء `rasm-engine-tiles` وإضافة grid coverage وtransactional dirty tile set على فرع منفصل.
 - 2026-10-31: إكمال أساس المرحلة 4 ودمج PR #12 بالالتزام `e3cafa2aa1bf6997c34892f6be85d04ac58ded2c` بعد نجاح 59 اختبارًا على كل من Linux وWindows وmacOS، ونجاح format وClippy.
-- 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
+- 2026-10-31: دمج Issue #13 وPR #13 بالالتزام `2cea1784fcc601e06342be2786af1eba4904ef52` لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` وربط حدود هندسة الضربة بنظام البلاطات.
 - 2026-10-31: دمج Issue #14 وPR #14 بالالتزام `b70bbceca44a76d350cfbf70957fede125d49d50` بعد نجاح بناء Android ARM64 وتوليد Kotlin bindings ونجاح 67 اختبارًا على Linux وWindows وmacOS، مع format وClippy.
 - 2026-10-31: فتح Issue #15 والفرع `android/ffi-emulator-smoke-test` لإضافة APK smoke host وتشغيل UniFFI من Kotlin داخل Android Emulator.
