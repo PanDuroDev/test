@@ -7,6 +7,7 @@ members = [
     "crates/engine-ffi",
     "crates/renderer-tileink",
     "tools/uniffi-bindgen",
+    "apps/desktop-prototype",
 ]
 
 [workspace.package]
