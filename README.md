@@ -2,7 +2,7 @@
 
 **Rasm Studio** is the working title for a local-first drawing and 2D animation app with a lightweight 2.5D stage. It is intended to make drawing, frame-by-frame animation, and simple depth-aware scenes feel like one workflow.
 
-> Early foundation stage. This repository contains the mathematical and brush-input foundations plus an experimental desktop renderer adapter. An Android ARM64 FFI proof is under development, but there is not yet a runnable Android application.
+> Early foundation stage. This repository contains the mathematical and brush-input foundations plus an experimental desktop renderer adapter. The Android ARM64 Rust library and UniFFI Kotlin bindings now build in CI. A minimal Android APK/Emulator runtime smoke test is under development; this is not yet a drawing application.
 
 ## Product direction
 
@@ -37,7 +37,8 @@ Tileink is an experimental desktop adapter, not the selected Android renderer. I
 - `crates/engine-core`: platform-independent math and timeline contracts.
 - `crates/engine-ink`: validated stylus samples, pressure-aware brush dabs, and renderer-independent connected stroke mesh geometry.
 - `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking, independent of the renderer.
-- `crates/engine-ffi`: narrow UniFFI DTO boundary; Android ARM64 cross-build and Kotlin binding generation are being added in the current spike.
+- `crates/engine-ffi`: narrow UniFFI DTO boundary for validated stroke preview and bounded tile coverage.
+- `android/ffi-smoke`: minimal Android host for testing Kotlin-to-Rust UniFFI calls in an emulator; not the product UI.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
 - `docs/PROJECT_PLAN.md`: maintained implementation log and contributor/AI handoff instructions.
@@ -64,6 +65,6 @@ The example writes `target/renderer-spike.png`. GPU initialization is deliberate
 
 ## Current status
 
-The repository now has exact timeline time, reversible canvas/screen transforms, adaptive pointer smoothing, pressure-aware dab sampling, connected stroke mesh geometry, bounded CPU-side tile coverage and dirty tracking, and an experimental GPU canvas adapter. A minimal UniFFI boundary is being proven for Android ARM64. There is still no Android APK, Compose app shell, device-tested stylus input, Android Surface renderer, document model, GPU tile cache, or animation editor.
+The repository now has exact timeline time, reversible canvas/screen transforms, adaptive pointer smoothing, pressure-aware dab sampling, connected stroke mesh geometry, bounded CPU-side tile coverage and dirty tracking, and an experimental GPU canvas adapter. The Rust FFI library builds for Android ARM64 and CI generates Kotlin bindings. A minimal APK smoke host is being tested in an Android emulator. There is still no Compose product UI, device-tested stylus input, Android Surface renderer, document model, GPU tile cache, or animation editor.
 
 Pull requests are validated by GitHub Actions on Linux, Windows, and macOS.
