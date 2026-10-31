@@ -226,6 +226,15 @@ impl GpuVertex {
     }
 }
 
+fn document_to_clip(position: DVec2, width: f64, height: f64) -> [f32; 2] {
+    let safe_width = width.max(1.0);
+    let safe_height = height.max(1.0);
+    [
+        (position.x / safe_width * 2.0 - 1.0) as f32,
+        (1.0 - position.y / safe_height * 2.0) as f32,
+    ]
+}
+
 struct GpuRenderer {
     instance: wgpu::Instance,
     window: Arc<Window>,
@@ -365,9 +374,9 @@ impl GpuRenderer {
             let base = vertices.len() as u32;
             for vertex in mesh.vertices() {
                 let position = vertex.position();
-                let x = (position.x / width * 2.0 - 1.0) as f32;
-                let y = (1.0 - position.y / height * 2.0) as f32;
-                vertices.push(GpuVertex { position: [x, y] });
+                vertices.push(GpuVertex {
+                    position: document_to_clip(position, width, height),
+                });
             }
             indices.extend(mesh.indices().iter().map(|index| base + *index));
         }
@@ -708,4 +717,44 @@ unsafe fn handle_windows_pointer_message(
     }
 
     true
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_edges_map_to_clip_space_edges() {
+        assert_eq!(document_to_clip(DVec2::new(0.0, 0.0), 100.0, 50.0), [-1.0, 1.0]);
+        assert_eq!(document_to_clip(DVec2::new(100.0, 50.0), 100.0, 50.0), [1.0, -1.0]);
+    }
+
+    #[test]
+    fn demo_stroke_produces_non_empty_engine_mesh() {
+        let input = InputState::with_demo_stroke(960.0, 640.0);
+        let strokes = input.snapshot();
+        let dabs = tessellate_stroke(&strokes[0], BrushConfig::default()).expect("demo dabs");
+        let mesh = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default())
+            .expect("demo mesh");
+
+        assert!(!mesh.is_empty());
+        assert!(!mesh.vertices().is_empty());
+        assert!(mesh.triangle_count() > 0);
+    }
+
+    #[test]
+    fn sample_storage_rejects_out_of_order_timestamps() {
+        let mut samples = Vec::new();
+        let first = StrokeSample::new(DVec2::new(1.0, 1.0), Some(0.5), 10)
+            .expect("valid first sample");
+        let earlier = StrokeSample::new(DVec2::new(2.0, 2.0), Some(0.6), 9)
+            .expect("valid earlier sample");
+
+        InputState::append_monotonic(&mut samples, first);
+        InputState::append_monotonic(&mut samples, earlier);
+
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].timestamp_ns(), 10);
+    }
 }
