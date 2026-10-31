@@ -15,6 +15,7 @@ use crate::BrushDab;
 pub enum StrokeGeometryError {
     InvalidConfig,
     InvalidDab,
+    NonFiniteGeometry,
     TooManyVertices,
     IndexOverflow,
 }
@@ -24,6 +25,7 @@ impl fmt::Display for StrokeGeometryError {
         let message = match self {
             Self::InvalidConfig => "stroke geometry configuration is invalid",
             Self::InvalidDab => "stroke dab contains a non-finite position or invalid radius",
+            Self::NonFiniteGeometry => "stroke geometry calculation produced a non-finite vertex",
             Self::TooManyVertices => "stroke mesh exceeds the configured vertex limit",
             Self::IndexOverflow => "stroke mesh cannot be represented with 32-bit indices",
         };
@@ -313,6 +315,9 @@ fn push_vertex(
     position: DVec2,
     config: StrokeGeometryConfig,
 ) -> Result<u32, StrokeGeometryError> {
+    if !position.x.is_finite() || !position.y.is_finite() {
+        return Err(StrokeGeometryError::NonFiniteGeometry);
+    }
     if mesh.vertices.len() >= config.max_vertices {
         return Err(StrokeGeometryError::TooManyVertices);
     }
@@ -330,7 +335,7 @@ fn push_triangle(mesh: &mut StrokeMesh, a: u32, b: u32, c: u32) {
     let ac = pc - pa;
     let area_twice = ab.x * ac.y - ab.y * ac.x;
 
-    if !area_twice.is_finite() || area_twice.abs() <= f64::EPSILON {
+    if !area_twice.is_finite() || area_twice == 0.0 {
         return;
     }
 
@@ -486,6 +491,33 @@ mod tests {
         let first_width = first_pair[0].position().distance(first_pair[1].position());
         let last_width = last_pair[0].position().distance(last_pair[1].position());
         assert!(last_width > first_width);
+    }
+
+    #[test]
+    fn very_small_brushes_keep_non_degenerate_triangles() {
+        let brush = BrushConfig::new(1.0e-12, 1.0, 1.0, 0.35, 100)
+            .expect("valid small brush");
+        let sample = StrokeSample::new(DVec2::ZERO, Some(1.0), 0).expect("valid sample");
+        let input = tessellate_stroke(&[sample], brush).expect("valid stroke");
+        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
+            .expect("small disk");
+
+        assert!(!mesh.is_empty());
+        assert_mesh_indices_are_valid(&mesh);
+    }
+
+    #[test]
+    fn non_finite_generated_vertices_are_rejected() {
+        let brush = BrushConfig::new(1.0e308, 1.0, 1.0, 0.35, 100)
+            .expect("finite brush configuration");
+        let sample =
+            StrokeSample::new(DVec2::new(1.0e308, 0.0), Some(1.0), 0).expect("finite sample");
+        let input = tessellate_stroke(&[sample], brush).expect("single sample");
+
+        assert_eq!(
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()),
+            Err(StrokeGeometryError::NonFiniteGeometry)
+        );
     }
 
     #[test]
