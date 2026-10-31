@@ -495,12 +495,11 @@ mod tests {
 
     #[test]
     fn very_small_brushes_keep_non_degenerate_triangles() {
-        let brush = BrushConfig::new(1.0e-12, 1.0, 1.0, 0.35, 100)
-            .expect("valid small brush");
+        let brush = BrushConfig::new(1.0e-12, 1.0, 1.0, 0.35, 100).expect("valid small brush");
         let sample = StrokeSample::new(DVec2::ZERO, Some(1.0), 0).expect("valid sample");
         let input = tessellate_stroke(&[sample], brush).expect("valid stroke");
-        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
-            .expect("small disk");
+        let mesh =
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()).expect("small disk");
 
         assert!(!mesh.is_empty());
         assert_mesh_indices_are_valid(&mesh);
@@ -508,8 +507,8 @@ mod tests {
 
     #[test]
     fn non_finite_generated_vertices_are_rejected() {
-        let brush = BrushConfig::new(1.0e308, 1.0, 1.0, 0.35, 100)
-            .expect("finite brush configuration");
+        let brush =
+            BrushConfig::new(1.0e308, 1.0, 1.0, 0.35, 100).expect("finite brush configuration");
         let sample =
             StrokeSample::new(DVec2::new(1.0e308, 0.0), Some(1.0), 0).expect("finite sample");
         let input = tessellate_stroke(&[sample], brush).expect("single sample");
