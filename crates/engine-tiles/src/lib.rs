@@ -31,7 +31,9 @@ impl fmt::Display for TileError {
             Self::InvalidRectangle => "rectangle coordinates must be finite and ordered",
             Self::InvalidMargin => "rectangle expansion margin must be finite and non-negative",
             Self::ExpansionOverflow => "rectangle expansion produced non-finite coordinates",
-            Self::CoordinateOutOfRange => "document coordinate cannot be represented as a tile index",
+            Self::CoordinateOutOfRange => {
+                "document coordinate cannot be represented as a tile index"
+            },
             Self::TooManyTiles => "rectangle exceeds the configured tile coverage limit",
             Self::TooManyDirtyTiles => "dirty tile set exceeds its configured limit",
         };
@@ -88,11 +90,7 @@ impl DocumentRect {
         let delta = DVec2::splat(margin);
         let min = self.min - delta;
         let max = self.max + delta;
-        if !min.x.is_finite()
-            || !min.y.is_finite()
-            || !max.x.is_finite()
-            || !max.y.is_finite()
-        {
+        if !min.x.is_finite() || !min.y.is_finite() || !max.x.is_finite() || !max.y.is_finite() {
             return Err(TileError::ExpansionOverflow);
         }
 
@@ -352,11 +350,7 @@ impl DirtyTileSet {
     /// Marks all tiles intersected by a rectangle without additional margin.
     ///
     /// Returns the number of newly marked tiles.
-    pub fn mark_rect(
-        &mut self,
-        grid: TileGrid,
-        rect: DocumentRect,
-    ) -> Result<usize, TileError> {
+    pub fn mark_rect(&mut self, grid: TileGrid, rect: DocumentRect) -> Result<usize, TileError> {
         self.mark_rect_with_margin(grid, rect, 0.0)
     }
 
@@ -431,12 +425,17 @@ mod tests {
     fn zero_tile_size_and_zero_limits_are_rejected() {
         assert_eq!(TileGrid::new(0, 16), Err(TileError::InvalidTileSize));
         assert_eq!(TileGrid::new(64, 0), Err(TileError::InvalidTileLimit));
-        assert_eq!(DirtyTileSet::new(0).err(), Some(TileError::InvalidTileLimit));
+        assert_eq!(
+            DirtyTileSet::new(0).err(),
+            Some(TileError::InvalidTileLimit)
+        );
     }
 
     #[test]
     fn positive_rectangle_uses_half_open_tile_bounds() {
-        let coverage = grid().coverage(rect(1.0, 2.0, 65.0, 66.0)).expect("coverage");
+        let coverage = grid()
+            .coverage(rect(1.0, 2.0, 65.0, 66.0))
+            .expect("coverage");
         let expected = vec![
             TileCoord::new(0, 0),
             TileCoord::new(1, 0),
@@ -450,26 +449,51 @@ mod tests {
 
     #[test]
     fn exact_max_boundary_does_not_include_the_next_tile() {
-        let coverage = grid().coverage(rect(0.0, 0.0, 64.0, 64.0)).expect("coverage");
-        assert_eq!(coverage.iter().collect::<Vec<_>>(), vec![TileCoord::new(0, 0)]);
+        let coverage = grid()
+            .coverage(rect(0.0, 0.0, 64.0, 64.0))
+            .expect("coverage");
+        assert_eq!(
+            coverage.iter().collect::<Vec<_>>(),
+            vec![TileCoord::new(0, 0)]
+        );
     }
 
     #[test]
     fn negative_coordinates_use_floor_not_truncation() {
-        let coverage = grid().coverage(rect(-64.0, -64.0, 0.0, 0.0)).expect("coverage");
-        assert_eq!(coverage.iter().collect::<Vec<_>>(), vec![TileCoord::new(-1, -1)]);
+        let coverage = grid()
+            .coverage(rect(-64.0, -64.0, 0.0, 0.0))
+            .expect("coverage");
+        assert_eq!(
+            coverage.iter().collect::<Vec<_>>(),
+            vec![TileCoord::new(-1, -1)]
+        );
     }
 
     #[test]
     fn negative_fractional_rectangle_stays_in_negative_tile() {
-        let coverage = grid().coverage(rect(-63.0, -20.0, -0.1, -0.1)).expect("coverage");
-        assert_eq!(coverage.iter().collect::<Vec<_>>(), vec![TileCoord::new(-1, -1)]);
+        let coverage = grid()
+            .coverage(rect(-63.0, -20.0, -0.1, -0.1))
+            .expect("coverage");
+        assert_eq!(
+            coverage.iter().collect::<Vec<_>>(),
+            vec![TileCoord::new(-1, -1)]
+        );
     }
 
     #[test]
     fn zero_width_or_height_rectangle_is_empty() {
-        assert!(grid().coverage(rect(10.0, 0.0, 10.0, 64.0)).expect("coverage").is_empty());
-        assert!(grid().coverage(rect(0.0, 10.0, 64.0, 10.0)).expect("coverage").is_empty());
+        assert!(
+            grid()
+                .coverage(rect(10.0, 0.0, 10.0, 64.0))
+                .expect("coverage")
+                .is_empty()
+        );
+        assert!(
+            grid()
+                .coverage(rect(0.0, 10.0, 64.0, 10.0))
+                .expect("coverage")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -488,16 +512,24 @@ mod tests {
     fn invalid_margins_are_rejected() {
         let source = rect(0.0, 0.0, 1.0, 1.0);
         assert_eq!(source.expanded(-1.0), Err(TileError::InvalidMargin));
-        assert_eq!(source.expanded(f64::INFINITY), Err(TileError::InvalidMargin));
+        assert_eq!(
+            source.expanded(f64::INFINITY),
+            Err(TileError::InvalidMargin)
+        );
     }
 
     #[test]
     fn margin_expansion_marks_adjacent_tiles() {
         let source = rect(63.8, 10.0, 64.0, 20.0);
         let without_margin = grid().coverage(source).expect("coverage");
-        let with_margin = grid().coverage_with_margin(source, 0.5).expect("expanded coverage");
+        let with_margin = grid()
+            .coverage_with_margin(source, 0.5)
+            .expect("expanded coverage");
 
-        assert_eq!(without_margin.iter().collect::<Vec<_>>(), vec![TileCoord::new(0, 0)]);
+        assert_eq!(
+            without_margin.iter().collect::<Vec<_>>(),
+            vec![TileCoord::new(0, 0)]
+        );
         assert_eq!(
             with_margin.iter().collect::<Vec<_>>(),
             vec![TileCoord::new(0, 0), TileCoord::new(1, 0)]
@@ -522,12 +554,17 @@ mod tests {
     #[test]
     fn out_of_range_coordinates_are_rejected() {
         let source = rect(9.0e20, 0.0, 9.1e20, 1.0);
-        assert_eq!(grid().coverage(source), Err(TileError::CoordinateOutOfRange));
+        assert_eq!(
+            grid().coverage(source),
+            Err(TileError::CoordinateOutOfRange)
+        );
     }
 
     #[test]
     fn iterator_is_exact_size_and_row_major() {
-        let coverage = grid().coverage(rect(0.0, 0.0, 129.0, 129.0)).expect("coverage");
+        let coverage = grid()
+            .coverage(rect(0.0, 0.0, 129.0, 129.0))
+            .expect("coverage");
         let mut iter = coverage.iter();
         assert_eq!(iter.len(), 9);
         assert_eq!(iter.next(), Some(TileCoord::new(0, 0)));
@@ -568,7 +605,9 @@ mod tests {
     #[test]
     fn dirty_set_iterates_and_drains_in_row_major_order() {
         let mut dirty = DirtyTileSet::new(16).expect("valid set");
-        dirty.mark_rect(grid(), rect(0.0, 0.0, 129.0, 129.0)).expect("mark");
+        dirty
+            .mark_rect(grid(), rect(0.0, 0.0, 129.0, 129.0))
+            .expect("mark");
         let expected = vec![
             TileCoord::new(0, 0),
             TileCoord::new(1, 0),
@@ -589,7 +628,9 @@ mod tests {
     #[test]
     fn dirty_limit_failure_is_transactional() {
         let mut dirty = DirtyTileSet::new(2).expect("valid set");
-        dirty.mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0)).expect("initial mark");
+        dirty
+            .mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0))
+            .expect("initial mark");
         let before = dirty.iter().collect::<Vec<_>>();
 
         assert_eq!(
@@ -616,7 +657,9 @@ mod tests {
     #[test]
     fn clear_removes_all_dirty_tiles() {
         let mut dirty = DirtyTileSet::new(8).expect("valid set");
-        dirty.mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0)).expect("mark");
+        dirty
+            .mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0))
+            .expect("mark");
         dirty.clear();
         assert!(dirty.is_empty());
     }
