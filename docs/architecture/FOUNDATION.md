@@ -298,8 +298,19 @@ C_o=C_s+C_d(1-\alpha_s)
 تضيف `DirtyTileSet` تجميعًا idempotent للبلاطات المتأثرة، ودعم توسيع المستطيل بهامش finite non-negative، وحدًا أعلى configurable. الإضافة transactional: عند تخطي الحد ترجع خطأ ولا تترك إدراجًا جزئيًا. هذا ليس GPU cache ولا invalidation graph للطبقات، ولا يحدد حجم البلاطة الإنتاجي؛ هذه قرارات لاحقة تحتاج تكاملًا وقياسات.
 
 
-### 14. إثبات جسر Android FFI — قيد التنفيذ
+### 14. جسر Android FFI وUniFFI — بناء المكتبة مكتمل، واختبار runtime قيد التنفيذ
 
-تبدأ تجربة Android بحد Rust/Kotlin منفصل بدل ربط الأنواع الداخلية مباشرة بالواجهة. `rasm-engine-ffi` يعرّف DTOs للعينات والحدود وإحداثيات البلاطات، ويستدعي `engine-ink` و`engine-tiles` خلف واجهة UniFFI. لا تتسرب أنواع `glam` أو `BrushDab` أو `StrokeMesh` أو `Tileink` أو `wgpu` إلى Kotlin.
+أضيفت `rasm-engine-ffi` كواجهة Rust/Kotlin ضيقة تعتمد UniFFI. تقبل DTOs عددية للعينات، وتعيد حدود Mesh وتغطية بلاطات محدودة، دون كشف `glam` أو `BrushDab` أو `StrokeMesh` أو أنواع Renderer إلى Kotlin.
 
-يستهدف البناء الأول Android ARM64 (`aarch64-linux-android`) مع NDK مثبت الإصدار. يتحقق CI من بناء shared library وتوليد Kotlin bindings من metadata. هذا ليس إثباتًا لتشغيل APK أو استدعاء JNI/UniFFI على جهاز؛ هذه مرحلة لاحقة تتطلب Android host واختبار runtime فعليًا. تفاصيل التنفيذ في [Issue #14](https://github.com/PanDuroDev/test/issues/14).
+تم إثبات بناء shared library لهدف Android ARM64 (`aarch64-linux-android`) باستخدام NDK `28.2.13676358` و`cargo-ndk 4.1.2`، ثم توليد Kotlin bindings باستخدام UniFFI `0.32.2` في CI. هذا الجزء مدمج عبر [PR #14](https://github.com/PanDuroDev/test/pull/14).
+
+تستكمل [Issue #15](https://github.com/PanDuroDev/test/issues/15) الإثبات داخل APK: بناء ABI لـ ARM64 وx86_64، توليد Kotlin أثناء Gradle build، تشغيل اختبارات instrumentation على Emulator، والتحقق من استدعاء Rust واستلام النتائج والأخطاء. النجاح هنا لا يثبت بعد الإدخال بالقلم أو GPU Surface أو تشغيلًا على جهاز فعلي.
+
+
+### 15. اختبار جسر FFI داخل Android Emulator — قيد التنفيذ
+
+يحتوي `android/ffi-smoke` على تطبيق مضيف صغير لاختبار التكامل، وليس على UI المنتج. يبني Gradle المكتبة الأصلية لكل من `arm64-v8a` و`x86_64`، ثم يولد Kotlin bindings ويضمها إلى التطبيق مع JNA Android runtime.
+
+تستدعي اختبارات instrumentation `bridgeVersion()` و`previewStroke()`، وتتحقق من bounds وتغطية البلاطات ومن وصول أخطاء التحقق إلى طبقة Kotlin. سيشغّل CI التطبيق على Android x86_64 Emulator ويتحقق أيضًا من وجود المكتبتين داخل APK.
+
+النتيجة المستهدفة هي إثبات runtime interop فقط. لا يُعد ذلك إثباتًا لالتقاط MotionEvent أو دقة الضغط والميل أو GPU Surface أو كمون الرسم. تفاصيل العمل في [Issue #15](https://github.com/PanDuroDev/test/issues/15).
