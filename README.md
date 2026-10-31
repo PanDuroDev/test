@@ -39,6 +39,7 @@ Tileink is an experimental desktop adapter, not the selected Android renderer. I
 - `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking, independent of the renderer.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
+- `docs/PROJECT_PLAN.md`: maintained implementation log and contributor/AI handoff instructions.
 - `docs/architecture/RENDERER_SPIKE.md`: Tileink evaluation and current platform limitations.
 - `.github/workflows/ci.yml`: formatting, lint, and cross-platform tests.
 
