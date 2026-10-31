@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-10-31  
-> الحالة العامة: **أساس المحرك وإدخال القلم وهندسة الضربة ونظام البلاطات CPU-side موجودة؛ تطبيق Android وRenderer الإنتاجي لم يُبنيا بعد.**
+> الحالة العامة: **أساس المحرك وإدخال القلم وهندسة الضربة ونظام البلاطات CPU-side موجود؛ إثبات جسر Rust/Kotlin لـ Android قيد التنفيذ، ولا يوجد تطبيق Android أو Renderer إنتاجي بعد.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | محرك الحسابات والمستند | Rust workspace | أساس أولي موجود، نموذج المستند الكامل غير موجود |
 | واجهة Android | Kotlin + Compose | قرار معماري؛ لم يبدأ التطبيق بعد |
-| ربط Rust مع Kotlin | UniFFI مرشح | غير مطبق؛ يجب إثباته في تجربة تكامل صغيرة |
+| ربط Rust مع Kotlin | UniFFI | تجربة FFI وKotlin binding generation قيد التنفيذ في Issue #14؛ لم يثبت الاستدعاء داخل APK أو على جهاز بعد |
 | GPU | wgpu | يظهر في تبعية تجربة Tileink؛ لا يوجد renderer إنتاجي |
 | الرياضيات | glam + kurbo | مثبتان في workspace |
 | بناء المسارات | lyon مرشح | لم يُدمج بعد |
@@ -136,6 +136,8 @@
 - `crates/engine-core/`: أساس الرياضيات والوقت والتحويلات والتنعيم.
 - `crates/engine-ink/`: عينات القلم وتوليد dabs وهندسة الضربة المتصلة وحدود mesh.
 - `crates/engine-tiles/`: تغطية البلاطات وتتبع البلاطات المتضررة على CPU.
+- `crates/engine-ffi/`: DTO boundary عبر UniFFI؛ إثبات Android ARM64 قيد التنفيذ في Issue #14.
+- `tools/uniffi-bindgen/`: أداة توليد Kotlin bindings من metadata المكتبة.
 - `crates/renderer-tileink/`: محول Tileink التجريبي ومثال WGPU.
 - `docs/architecture/FOUNDATION.md`: وثيقة التصميم والأساس الرياضي والمعماري.
 - `docs/architecture/RENDERER_SPIKE.md`: تقييم Tileink وحدود اعتماده.
@@ -220,9 +222,22 @@
 
 **المتابعة:** [Issue #13](https://github.com/PanDuroDev/test/issues/13) يضيف مصدرًا موحدًا لحدود هندسة الضربة كي يستطيع المستهلك تحويلها إلى مستطيل invalidation دون إعادة حساب bounds. هذا امتداد تكاملي مستقل ولا يغيّر حقيقة أن أساس tile grid وdirty tracking في Issue #11 مكتمل.
 
-### المرحلة 5: إثبات مسار Android والقلم وGPU
+### المرحلة 5: إثبات مسار Android والقلم وGPU — بدأت عبر [Issue #14](https://github.com/PanDuroDev/test/issues/14)
 
 **الهدف:** تقليل المخاطرة الأكبر مبكرًا: التأكد أن المحرك يمكن عرضه والتفاعل معه على جهاز Android حقيقي.
+
+**الجزء الأول قيد التنفيذ: جسر Rust/Kotlin**
+
+- Issue: [#14](https://github.com/PanDuroDev/test/issues/14) — مفتوح.
+- Branch: `android/uniffi-rust-bridge`.
+- إضافة `rasm-engine-ffi` كحد FFI مستقل باستخدام UniFFI 0.32.2.
+- تمرير DTOs عددية للعينات، ثم استدعاء `engine-ink` لحساب mesh bounds و`engine-tiles` لحساب tile coverage بحد أعلى قدره 16,384 بلاطة لكل preview.
+- بناء shared library لـ `aarch64-linux-android` عبر `cargo-ndk 4.1.2` وAndroid NDK `28.2.13676358` مع API level 23.
+- توليد Kotlin bindings من metadata المكتبة في CI.
+- لا يضيف هذا الجزء APK أو Gradle project أو Compose UI، ولا يثبت حتى الآن أن Kotlin استدعى Rust داخل تطبيق أو جهاز فعلي.
+
+**ما يلي بعد إثبات البناء والتوليد:** إضافة Android host يضم المكتبة وJNA (UniFFI Kotlin runtime يحتاج JNA 5.12.0 أو أحدث)، ثم اختبار MotionEvent التاريخية والضغط والميل والتوقيت قبل بدء Surface renderer.
+
 
 **المهام المقترحة:**
 
@@ -406,3 +421,4 @@ target/renderer-spike.png
 - 2026-10-31: بدء المرحلة 4 عبر Issue #11؛ إنشاء `rasm-engine-tiles` وإضافة grid coverage وtransactional dirty tile set على فرع منفصل.
 - 2026-10-31: إكمال أساس المرحلة 4 ودمج PR #12 بالالتزام `e3cafa2aa1bf6997c34892f6be85d04ac58ded2c` بعد نجاح 59 اختبارًا على كل من Linux وWindows وmacOS، ونجاح format وClippy.
 - 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
+- 2026-10-31: بدء أول إثبات Android عبر Issue #14 والفرع `android/uniffi-rust-bridge`: جسر UniFFI DTO ضيق، بناء Android ARM64، وتوليد Kotlin bindings قيد المراجعة؛ لا يوجد APK أو اختبار جهاز في هذه الخطوة.
