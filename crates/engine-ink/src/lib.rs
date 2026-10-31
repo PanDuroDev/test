@@ -4,6 +4,8 @@
 //! dab stream from path distance rather than event arrival frequency. No GPU,
 //! windowing, or platform input API is used here.
 
+use std::fmt;
+
 use glam::DVec2;
 
 /// Errors returned when validating pen input or sampling a stroke.
@@ -16,6 +18,22 @@ pub enum StrokeError {
     InvalidBrushConfig,
     TooManyDabs,
 }
+
+impl fmt::Display for StrokeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::EmptyStroke => "a stroke must contain at least one sample",
+            Self::InvalidPosition => "stroke position must be finite",
+            Self::InvalidPressure => "pressure must be finite and normalized to [0, 1]",
+            Self::NonMonotonicTimestamp => "stroke timestamps must be monotonic",
+            Self::InvalidBrushConfig => "brush configuration contains invalid values",
+            Self::TooManyDabs => "stroke exceeds the configured dab limit",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for StrokeError {}
 
 /// One normalized input sample from a pointer or stylus.
 ///
