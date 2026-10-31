@@ -227,39 +227,19 @@
 
 ### تجربة تكامل FFI السابقة: Android/Kotlin — محفوظة ومنفصلة عن هدف المنتج
 
-**الهدف:** تقليل المخاطرة الأكبر مبكرًا: التأكد أن المحرك يمكن عرضه والتفاعل معه على جهاز Android حقيقي.
+هذه تجربة تحقق لحدود Rust/Kotlin فقط، وليست مسار بناء تطبيق المنتج.
 
-**الجزء الأول قيد التنفيذ: جسر Rust/Kotlin**
-
+**الحالة:**
 - PR: [#14](https://github.com/PanDuroDev/test/pull/14) — مدمج.
-- PR: [#15](https://github.com/PanDuroDev/test/pull/15) — مفتوح؛ يضيف smoke host لاختبار Kotlin/Rust على Emulator.
-- هذه التجربة محفوظة ولا تُعد تطبيقًا للمنتج ولا شرطًا لإصدار الكمبيوتر.
-- إضافة `rasm-engine-ffi` كحد FFI مستقل باستخدام UniFFI 0.32.2.
-- تمرير DTOs عددية للعينات، ثم استدعاء `engine-ink` لحساب mesh bounds و`engine-tiles` لحساب tile coverage بحد أعلى قدره 16,384 بلاطة لكل preview.
-- بناء shared library لـ `aarch64-linux-android` عبر `cargo-ndk 4.1.2` وAndroid NDK `28.2.13676358` مع API level 23.
-- توليد Kotlin bindings من metadata المكتبة في CI.
-- لا يضيف هذا الجزء APK أو Gradle project أو Compose UI، ولا يثبت حتى الآن أن Kotlin استدعى Rust داخل تطبيق أو جهاز فعلي.
+- PR: [#15](https://github.com/PanDuroDev/test/pull/15) — مفتوح؛ يضيف Android smoke host ويختبر تحميل المكتبة واستدعاء Rust من Kotlin على x86_64 Emulator.
+- PR #14 أضاف `rasm-engine-ffi` باستخدام UniFFI 0.32.2، وDTOs عددية للعينات والحدود والبلاطات، وبناء Android ARM64 وتوليد Kotlin bindings.
+- PR #15 يبني APK ويحتوي على مكتبات ARM64 وx86_64. بناء APK وفحوص Rust نجحت في تشغيل CI #48، لكن Emulator لم يكمل الإقلاع، لذلك لم تبدأ instrumentation tests.
+- أضيف إلى فرع PR #15 تمكين KVM في GitHub Actions وتحسين مدخلات Gradle لتتبع ملفات workspace ومولد UniFFI؛ تشغيل CI #49 يعيد التحقق من ذلك.
 
-**الحالة الدقيقة:** PR #14 أثبت بناء مكتبة Android ARM64 وتوليد Kotlin bindings. PR #15 يختبر تحميل المكتبة واستدعاء Rust من APK على Emulator؛ آخر محاولة فشلت لأن Emulator لم يكمل الإقلاع، مع نجاح بناء APK وفحوص Rust. يبقى هذا مسار تحقق تكامليًا منفصلًا، ولا يؤخر عمل Desktop.
-
-
-**المهام المقترحة:**
-
-- إنشاء تطبيق Android تجريبي صغير Kotlin + Compose، وليس واجهة المنتج النهائية.
-- التقاط Windows pen/pointer history والضغط والميل والتوقيت ونوع المؤشر عبر adapter مكتبي.
-- تمرير العينات على دفعات إلى Rust؛ لا تستدع حدود FFI لكل نقطة دون قياس.
-- إنشاء wgpu Surface render path على Windows.
-- فصل UI thread وinput queue وrender thread وIO worker بوضوح.
-- اختبار resize/minimize/restore وإعادة إنشاء Surface وفقدان GPU context والذاكرة.
-- مقارنة خيارات Renderer: محول مخصص مبني على wgpu مقابل أي اعتماد مكتبي مثل Tileink.
-
-**معايير القبول:**
-
-- بناء وتشغيل APK على جهاز Android ARM64 فعلي.
-- ظهور الضربة على Surface، مع تحقق الضغط/الميل حيث يدعمه الجهاز.
-- لا يحدث crash عند إعادة إنشاء Surface أو تدوير دورة الحياة المدعومة.
-- توثيق GPU backend وقيود الجهاز وقياس أولي input-to-visible latency.
-- قرار موثق بشأن الاستمرار مع Renderer مخصص أو تبعية موجودة. لا تعتمد Tileink على Android دون نجاح هذا الاختبار.
+**حدود التجربة:**
+- لا تثبت إدخال قلم فعلي أو عرض GPU أو وجود واجهة منتج.
+- لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
+- تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
 ### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — قيد التخطيط عبر [Issue #16](https://github.com/PanDuroDev/test/issues/16)
 
@@ -298,9 +278,12 @@
 
 ### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
-**الهدف:** دمج إدخال Android والمحرك والـ Renderer والمستند في شاشة رسم فعلية.
+**الهدف:** دمج إدخال Windows والمحرك والـ Renderer والمستند في شاشة رسم فعلية.
 
 **المهام المقترحة:**
+
+- التقاط Windows pen/pointer history والضغط والميل والتوقيت ونوع المؤشر عبر adapter مكتبي.
+- تمرير العينات إلى Rust عبر queue/دفعات مع منع إسقاطها بصمت.
 
 - Canvas pan/zoom/rotate.
 - قلم وفرشاة أساسية وممحاة وألوان.
