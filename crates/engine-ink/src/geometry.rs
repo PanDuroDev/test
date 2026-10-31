@@ -296,7 +296,7 @@ fn push_round_cap(
     let mut arc = Vec::with_capacity(segments + 1);
 
     for segment in 0..=segments {
-        let angle = -PI / 2.0 - PI * segment as f64 / segments as f64;
+        let angle = PI / 2.0 - PI * segment as f64 / segments as f64;
         let point = center + (tangent * angle.cos() + normal * angle.sin()) * radius;
         arc.push(push_vertex(mesh, point, config)?);
     }
