@@ -23,7 +23,7 @@ android {
 
     sourceSets.getByName("main") {
         // AGP 9 built-in Kotlin requires generated .kt sources in AndroidSourceSet.kotlin.
-        kotlin.directories.add(generatedKotlin)
+        kotlin.directories.add(generatedKotlin.absolutePath)
         jniLibs.srcDir(generatedJniLibs)
     }
 
