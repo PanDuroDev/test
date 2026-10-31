@@ -4,6 +4,8 @@
 //! Keep this adapter at the edge of the engine so a mobile renderer can be
 //! integrated without changing stored input samples or brush calculations.
 
+use std::fmt;
+
 use kurbo::Circle;
 use peniko::Color;
 use rasm_engine_ink::BrushDab;
@@ -15,6 +17,18 @@ pub enum CanvasBuildError {
     ZeroDimensions,
     InvalidScale,
 }
+
+impl fmt::Display for CanvasBuildError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::ZeroDimensions => "canvas dimensions must be non-zero",
+            Self::InvalidScale => "canvas scale factor must be finite and positive",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for CanvasBuildError {}
 
 /// Builds a Tileink canvas containing one analytic circle per brush dab.
 ///
