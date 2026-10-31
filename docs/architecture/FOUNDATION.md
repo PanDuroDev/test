@@ -42,7 +42,7 @@ UniFFI مرشح لحدود Rust/Kotlin، ويمكن استخدام توليد Sw
 | Tessellation | lyon | يحول المسارات إلى مثلثات قابلة للرفع إلى GPU | يجب تحديد tolerance حسب zoom |
 | الفرش | Hokusai أو libmypaint | منطق الفرش والضغط والميل وتوليد dabs موجود بدل إعادة اختراع كل شيء | يجب قياس التكامل والذاكرة والـ latency على الجهاز المستهدف |
 | إدخال الصور | image | فك وترميز صيغ الصور الشائعة | إدارة ICC والألوان تحتاج طبقة منفصلة |
-| الربط | UniFFI | توليد واجهات Kotlin وSwift من Rust | يجب اختبار FFI والـ threading مبكرًا |
+| الربط | UniFFI | توليد واجهات Kotlin وSwift من Rust | جسر DTO أولي قيد التنفيذ؛ لا يوجد بعد استدعاء من APK أو إثبات threading/device runtime |
 | واجهة Android | Kotlin + Compose | تكامل نظام Android وواجهة قابلة للتطوير | منطقة الرسم ليست لوحة Compose عادية؛ تحتاج مسار عرض منخفض الكمون |
 
 ### قرارات عدم الاعتماد حاليًا
@@ -296,3 +296,10 @@ C_o=C_s+C_d(1-\alpha_s)
 أضيفت crate `rasm-engine-tiles` كطبقة CPU مستقلة عن Renderer. تستخدم `DocumentRect` حدودًا نصف مفتوحة `[min, max)` بوحدات document raster pixels، و`TileCoord` موقعة لمعالجة الامتداد السالب. تحسب `TileGrid` نطاق `TileCoverage` دون تخصيص قائمة مسبقة، مع iterator ثابت الترتيب row-major وحد أقصى لعدد البلاطات المغطاة.
 
 تضيف `DirtyTileSet` تجميعًا idempotent للبلاطات المتأثرة، ودعم توسيع المستطيل بهامش finite non-negative، وحدًا أعلى configurable. الإضافة transactional: عند تخطي الحد ترجع خطأ ولا تترك إدراجًا جزئيًا. هذا ليس GPU cache ولا invalidation graph للطبقات، ولا يحدد حجم البلاطة الإنتاجي؛ هذه قرارات لاحقة تحتاج تكاملًا وقياسات.
+
+
+### 14. إثبات جسر Android FFI — قيد التنفيذ
+
+تبدأ تجربة Android بحد Rust/Kotlin منفصل بدل ربط الأنواع الداخلية مباشرة بالواجهة. `rasm-engine-ffi` يعرّف DTOs للعينات والحدود وإحداثيات البلاطات، ويستدعي `engine-ink` و`engine-tiles` خلف واجهة UniFFI. لا تتسرب أنواع `glam` أو `BrushDab` أو `StrokeMesh` أو `Tileink` أو `wgpu` إلى Kotlin.
+
+يستهدف البناء الأول Android ARM64 (`aarch64-linux-android`) مع NDK مثبت الإصدار. يتحقق CI من بناء shared library وتوليد Kotlin bindings من metadata. هذا ليس إثباتًا لتشغيل APK أو استدعاء JNI/UniFFI على جهاز؛ هذه مرحلة لاحقة تتطلب Android host واختبار runtime فعليًا. تفاصيل التنفيذ في [Issue #14](https://github.com/PanDuroDev/test/issues/14).
