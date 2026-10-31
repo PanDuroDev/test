@@ -36,7 +36,8 @@ Tileink is an experimental desktop adapter, not the selected Android renderer. I
 
 - `crates/engine-core`: platform-independent math and timeline contracts.
 - `crates/engine-ink`: validated stylus samples, pressure-aware brush dabs, and renderer-independent connected stroke mesh geometry.
-- `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking, independent of the renderer.\n- `crates/engine-ffi`: narrow UniFFI DTO boundary; Android ARM64 cross-build and Kotlin binding generation are being added in the current spike.
+- `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking, independent of the renderer.
+- `crates/engine-ffi`: narrow UniFFI DTO boundary; Android ARM64 cross-build and Kotlin binding generation are being added in the current spike.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
 - `docs/PROJECT_PLAN.md`: maintained implementation log and contributor/AI handoff instructions.
