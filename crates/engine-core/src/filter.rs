@@ -129,7 +129,7 @@ mod tests {
 
         let output_range = output.iter().copied().fold(f64::NEG_INFINITY, f64::max)
             - output.iter().copied().fold(f64::INFINITY, f64::min);
-        assert!(output_range < 2.0);
+        assert!(output_range < 0.2, "expected jitter to be strongly attenuated, got range {output_range}");
     }
 
     #[test]
