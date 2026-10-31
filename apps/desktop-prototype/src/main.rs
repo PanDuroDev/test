@@ -8,8 +8,7 @@ use std::{
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
 use rasm_engine_ink::{
-    BrushConfig, StrokeGeometryConfig, StrokeSample, tessellate_stroke,
-    tessellate_stroke_mesh,
+    BrushConfig, StrokeGeometryConfig, StrokeSample, tessellate_stroke, tessellate_stroke_mesh,
 };
 use wgpu::util::DeviceExt;
 use winit::{
@@ -26,7 +25,9 @@ const MAX_COMPLETED_STROKES: usize = 128;
 const MAX_TOTAL_VERTICES: usize = 2_000_000;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(target_os = "windows")]
@@ -65,12 +66,7 @@ impl InputState {
         let demo = points
             .into_iter()
             .filter_map(|(x, y, pressure, timestamp)| {
-                StrokeSample::new(
-                    DVec2::new(width * x, height * y),
-                    Some(pressure),
-                    timestamp,
-                )
-                .ok()
+                StrokeSample::new(DVec2::new(width * x, height * y), Some(pressure), timestamp).ok()
             })
             .collect::<Vec<_>>();
 
@@ -171,12 +167,7 @@ impl InputState {
     }
 
     #[cfg(target_os = "windows")]
-    fn append_pen_sample(
-        &mut self,
-        pointer_id: u32,
-        sample: StrokeSample,
-        axes: PenAxes,
-    ) {
+    fn append_pen_sample(&mut self, pointer_id: u32, sample: StrokeSample, axes: PenAxes) {
         if self.active_pen_id != Some(pointer_id) {
             return;
         }
@@ -213,8 +204,7 @@ struct GpuVertex {
     position: [f32; 2],
 }
 
-const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 1] =
-    wgpu::vertex_attr_array![0 => Float32x2];
+const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2];
 
 impl GpuVertex {
     fn layout() -> wgpu::VertexBufferLayout<'static> {
@@ -250,9 +240,9 @@ impl GpuRenderer {
         display: winit::event_loop::OwnedDisplayHandle,
         window: Arc<Window>,
     ) -> Result<Self, String> {
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_with_display_handle(Box::new(display)),
-        );
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
+            Box::new(display),
+        ));
         let surface = instance
             .create_surface(window.clone())
             .map_err(|error| format!("failed to create wgpu surface: {error}"))?;
@@ -289,8 +279,7 @@ impl GpuRenderer {
             immediate_size: 0,
         });
 
-        let render_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Rasm stroke pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -384,20 +373,24 @@ impl GpuRenderer {
         if vertices.is_empty() {
             vertices.push(GpuVertex::zeroed());
         }
-        let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Rasm stroke vertices"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Rasm stroke vertices"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
         let index_count = indices.len().min(u32::MAX as usize) as u32;
         if indices.is_empty() {
             indices.push(0);
         }
-        let index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Rasm stroke indices"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let index_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Rasm stroke indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            });
         (vertex_buffer, index_buffer, index_count)
     }
 
@@ -431,11 +424,15 @@ impl GpuRenderer {
             }
         };
 
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         let (vertex_buffer, index_buffer, index_count) = self.make_mesh_buffers(strokes);
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Rasm desktop frame"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Rasm desktop frame"),
+            });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -580,8 +577,7 @@ fn main() {
         WINDOW_WIDTH,
         WINDOW_HEIGHT,
     )));
-    let proxy_slot: Arc<Mutex<Option<EventLoopProxy<AppEvent>>>> =
-        Arc::new(Mutex::new(None));
+    let proxy_slot: Arc<Mutex<Option<EventLoopProxy<AppEvent>>>> = Arc::new(Mutex::new(None));
 
     let mut builder = EventLoop::<AppEvent>::with_user_event();
 
@@ -606,7 +602,9 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let mut app = App::new(input);
-    event_loop.run_app(&mut app).expect("desktop event loop failed");
+    event_loop
+        .run_app(&mut app)
+        .expect("desktop event loop failed");
 }
 
 #[cfg(target_os = "windows")]
@@ -657,9 +655,8 @@ unsafe fn handle_windows_pointer_message(
     let capacity = available.min(MAX_HISTORY_ENTRIES);
     let mut history = vec![POINTER_PEN_INFO::default(); capacity];
     let mut entries = capacity as u32;
-    let history_ok = unsafe {
-        GetPointerPenInfoHistory(pointer_id, &mut entries, history.as_mut_ptr())
-    } != 0;
+    let history_ok =
+        unsafe { GetPointerPenInfoHistory(pointer_id, &mut entries, history.as_mut_ptr()) } != 0;
 
     if history_ok {
         history.truncate((entries as usize).min(history.len()));
@@ -719,15 +716,20 @@ unsafe fn handle_windows_pointer_message(
     true
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn document_edges_map_to_clip_space_edges() {
-        assert_eq!(document_to_clip(DVec2::new(0.0, 0.0), 100.0, 50.0), [-1.0, 1.0]);
-        assert_eq!(document_to_clip(DVec2::new(100.0, 50.0), 100.0, 50.0), [1.0, -1.0]);
+        assert_eq!(
+            document_to_clip(DVec2::new(0.0, 0.0), 100.0, 50.0),
+            [-1.0, 1.0]
+        );
+        assert_eq!(
+            document_to_clip(DVec2::new(100.0, 50.0), 100.0, 50.0),
+            [1.0, -1.0]
+        );
     }
 
     #[test]
@@ -735,8 +737,8 @@ mod tests {
         let input = InputState::with_demo_stroke(960.0, 640.0);
         let strokes = input.snapshot();
         let dabs = tessellate_stroke(&strokes[0], BrushConfig::default()).expect("demo dabs");
-        let mesh = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default())
-            .expect("demo mesh");
+        let mesh =
+            tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()).expect("demo mesh");
 
         assert!(!mesh.is_empty());
         assert!(!mesh.vertices().is_empty());
@@ -746,10 +748,10 @@ mod tests {
     #[test]
     fn sample_storage_rejects_out_of_order_timestamps() {
         let mut samples = Vec::new();
-        let first = StrokeSample::new(DVec2::new(1.0, 1.0), Some(0.5), 10)
-            .expect("valid first sample");
-        let earlier = StrokeSample::new(DVec2::new(2.0, 2.0), Some(0.6), 9)
-            .expect("valid earlier sample");
+        let first =
+            StrokeSample::new(DVec2::new(1.0, 1.0), Some(0.5), 10).expect("valid first sample");
+        let earlier =
+            StrokeSample::new(DVec2::new(2.0, 2.0), Some(0.6), 9).expect("valid earlier sample");
 
         InputState::append_monotonic(&mut samples, first);
         InputState::append_monotonic(&mut samples, earlier);
