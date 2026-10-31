@@ -467,8 +467,8 @@ mod tests {
     #[test]
     fn single_dab_bounds_include_the_disk_extents() {
         let input = dabs(&[(-10.0, 7.0, 1.0)]);
-        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
-            .expect("valid disk");
+        let mesh =
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()).expect("valid disk");
         let bounds = mesh.bounds().expect("disk has bounds");
 
         assert!(bounds.min().x < -17.9);
@@ -492,7 +492,12 @@ mod tests {
         let bounds = mesh.bounds().expect("stroke has bounds");
 
         let (min_x, min_y, max_x, max_y) = mesh.vertices().iter().fold(
-            (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
             |(min_x, min_y, max_x, max_y), vertex| {
                 let point = vertex.position();
                 (
