@@ -250,7 +250,7 @@
 - إضافة JNA Android runtime وتوليد Kotlin bindings أثناء Gradle build.
 - Instrumentation tests تستدعي `bridgeVersion()` و`previewStroke()`، وتتحقق من bounds وtiles ومن انتقال خطأ timestamp من Rust إلى Kotlin.
 - CI سيبني Debug APK وAndroid test APK، ويتحقق من وجود المكتبتين داخل APK، ثم يشغل الاختبارات على Android x86_64 Emulator.
-- إعداد المشروع يستهدف JDK 17 وGradle 9.5.0 وAGP 9.3.1 وKotlin Gradle Plugin 2.4.20 وNDK 28.2.13676358.
+- إعداد المشروع يستهدف JDK 17 وGradle 9.5.0 وAGP 9.3.1 مع Kotlin المدمج في AGP 9 وNDK 28.2.13676358. لا يطبّق المشروع Kotlin Android plugin منفصلًا لأن AGP 9 يوفر Kotlin مدمجًا.
 
 **ما لا يثبته هذا الجزء:** لا يضيف Compose UI للمنتج، ولا يلتقط MotionEvent أو يقيس الضغط/الميل، ولا ينشئ GPU Surface أو يقيس input-to-visible latency. نجاح Emulator لا يعادل اختبار جهاز فعلي.
 
