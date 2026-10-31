@@ -53,7 +53,7 @@ The existing Android/Kotlin UniFFI smoke host remains isolated test infrastructu
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
 - `docs/PROJECT_PLAN.md`: maintained implementation log and contributor/AI handoff instructions.
 - `docs/architecture/RENDERER_SPIKE.md`: Tileink evaluation and current limitations.
-- `.github/workflows/ci.yml`: formatting, lint, and cross-platform Rust tests plus the separate Android FFI smoke job.
+- `.github/workflows/ci.yml`: formatting, lint, cross-platform Rust tests, and the separate Android FFI build/binding job.
 
 ## Development
 
