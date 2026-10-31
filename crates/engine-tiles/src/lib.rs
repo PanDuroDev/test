@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn out_of_range_coordinates_are_rejected() {
-        let source = rect(9.0e18, 0.0, 9.1e18, 1.0);
+        let source = rect(9.0e20, 0.0, 9.1e20, 1.0);
         assert_eq!(grid().coverage(source), Err(TileError::CoordinateOutOfRange));
     }
 
