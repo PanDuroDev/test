@@ -124,10 +124,10 @@ pub fn preview_stroke(
         .bounds()
         .ok_or_else(|| EngineBridgeError::invalid_input("stroke generated empty geometry"))?;
 
-    let rect = DocumentRect::new(bounds.min(), bounds.max())
-        .map_err(EngineBridgeError::invalid_input)?;
-    let grid = TileGrid::new(tile_size, MAX_TILES_PER_STROKE)
-        .map_err(EngineBridgeError::invalid_input)?;
+    let rect =
+        DocumentRect::new(bounds.min(), bounds.max()).map_err(EngineBridgeError::invalid_input)?;
+    let grid =
+        TileGrid::new(tile_size, MAX_TILES_PER_STROKE).map_err(EngineBridgeError::invalid_input)?;
 
     let coverage = grid.coverage_with_margin(rect, margin).map_err(|error| {
         if error == TileError::TooManyTiles {
@@ -160,9 +160,7 @@ fn tile_coordinate_output(tile: TileCoord) -> TileCoordinateOutput {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        EngineBridgeError, StrokeSampleInput, bridge_version, preview_stroke,
-    };
+    use super::{EngineBridgeError, StrokeSampleInput, bridge_version, preview_stroke};
 
     fn sample(x: f64, y: f64, timestamp_ns: i64) -> StrokeSampleInput {
         StrokeSampleInput {
@@ -191,15 +189,21 @@ mod tests {
         assert!(preview.bounds.max_x > 27.0);
         assert!(!preview.tiles.is_empty());
         assert!(preview.tiles.len() <= super::MAX_TILES_PER_STROKE);
-        assert!(preview.tiles.windows(2).all(|pair| {
-            (pair[0].y, pair[0].x) <= (pair[1].y, pair[1].x)
-        }));
+        assert!(
+            preview
+                .tiles
+                .windows(2)
+                .all(|pair| { (pair[0].y, pair[0].x) <= (pair[1].y, pair[1].x) })
+        );
     }
 
     #[test]
     fn negative_timestamps_are_rejected() {
         let result = preview_stroke(vec![sample(0.0, 0.0, -1)], 64, 0.0);
-        assert!(matches!(result, Err(EngineBridgeError::InvalidInput { .. })));
+        assert!(matches!(
+            result,
+            Err(EngineBridgeError::InvalidInput { .. })
+        ));
     }
 
     #[test]
@@ -222,6 +226,9 @@ mod tests {
             0.0,
         );
 
-        assert!(matches!(result, Err(EngineBridgeError::TileCoverageExceeded)));
+        assert!(matches!(
+            result,
+            Err(EngineBridgeError::TileCoverageExceeded)
+        ));
     }
 }
