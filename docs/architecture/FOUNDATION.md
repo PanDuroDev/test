@@ -280,3 +280,10 @@ C_o=C_s+C_d(1-\alpha_s)
 **سبب عدم اعتماد Tileink للإنتاج الآن:** مصفوفة التوافق المنشورة لا تعلن دعم Android أو iOS، وأنواع Canvas وRenderer وRetainedScene غير Send/Sync. يمكن اختبارها على Windows/macOS desktop، لكن هذا لا يثبت توافقها مع Android tablet-first. قرار المحرك النهائي مشروط بتجربة Surface فعلية على Android ARM64، وقياس زمن الرسم، واستهلاك الذاكرة، وتحديث المناطق الصغيرة.
 
 تم رفع MSRV للمستودع إلى Rust 1.87 ليتوافق مع متطلب wgpu 30 المنشور. تفاصيل تقييم المكتبة وشروط اعتمادها موثقة في [RENDERER_SPIKE.md](RENDERER_SPIKE.md).
+
+
+### 12. هندسة الضربة المتصلة
+
+أضيفت في `rasm-engine-ink` واجهة renderer-independent تحول dab stream إلى `StrokeMesh` من مثلثات متصلة. تستخدم المقاطع cross-sections متتابعة، ونهايات دائرية، وmiter محدودًا عند الزوايا الحادة، مع حد أقصى لعدد الرؤوس قبل التخصيص. الحالات القريبة من عكس الاتجاه تستخدم normal احتياطيًا بدل إنتاج قيم غير منتهية.
+
+هذه المرحلة لا تقدم حتى الآن anti-alias fringe أو CPU raster/compositing reference، ولا تعني أن محول Tileink يستخدم الشبكة الجديدة؛ محول Tileink الحالي ما زال يرسم dab كـ SDF circles. تتم مراجعة التنفيذ في [PR #9](https://github.com/PanDuroDev/test/pull/9).
