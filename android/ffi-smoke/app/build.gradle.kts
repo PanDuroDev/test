@@ -72,7 +72,6 @@ val generateUniFfiKotlin by tasks.registering(Exec::class) {
         "--",
         "generate",
         "--library", x86_64Library.absolutePath,
-        "--config", repositoryRoot.resolve("crates/engine-ffi/uniffi.toml").absolutePath,
         "--language", "kotlin",
         "--out-dir", generatedKotlin.absolutePath
     )
