@@ -20,7 +20,7 @@ The goal is not to reproduce every feature of a full video editor. The focus is 
 | --- | --- |
 | Core engine | Rust |
 | Android application/UI | Kotlin + Compose |
-| Rust/Kotlin boundary | UniFFI, subject to a small integration spike |
+| Rust/Kotlin boundary | UniFFI; Android ARM64 native build and Kotlin bindings proven in CI, emulator runtime smoke test underway |
 | GPU abstraction | wgpu |
 | 2D math | glam, kurbo |
 | Vector path tessellation | lyon |
