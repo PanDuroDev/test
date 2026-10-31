@@ -2,7 +2,7 @@
 
 **Rasm Studio** is the working title for a local-first drawing and 2D animation app with a lightweight 2.5D stage. It is intended to make drawing, frame-by-frame animation, and simple depth-aware scenes feel like one workflow.
 
-> Early foundation stage. This repository does not yet contain a usable drawing application.
+> Early foundation stage. This repository contains the mathematical and brush-input foundations plus an experimental desktop renderer adapter. It is not yet a usable drawing application.
 
 ## Product direction
 
@@ -24,29 +24,43 @@ The goal is not to reproduce every feature of a full video editor. The focus is 
 | GPU abstraction | wgpu |
 | 2D math | glam, kurbo |
 | Vector path tessellation | lyon |
-| Brush engine | Evaluate Hokusai/libmypaint compatibility before adopting |
+| Input-to-brush sampling | rasm-engine-ink |
+| Experimental desktop renderer | Tileink 0.1.2 behind rasm-renderer-tileink |
 | 3D stage | A focused wgpu scene pass; no full game engine in the first milestone |
 
 The core crate is platform-independent. There is no remote backend requirement for the first product: documents, rendering, and autosave are local.
 
+Tileink is an experimental desktop adapter, not the selected Android renderer. Its published platform matrix does not claim Android/iOS support, and its Canvas/Renderer types are not Send/Sync. Keep it isolated behind the adapter until a real Android surface integration has been tested.
+
 ## Repository layout
 
-- crates/engine-core: platform-independent math and timeline contracts.
-- docs/architecture/FOUNDATION.md: product architecture, math, rendering, and roadmap.
-- .github/workflows/ci.yml: formatting, lint, and cross-platform tests.
+- `crates/engine-core`: platform-independent math and timeline contracts.
+- `crates/engine-ink`: validated stylus samples and distance-based pressure-aware brush dabs.
+- `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
+- `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
+- `docs/architecture/RENDERER_SPIKE.md`: Tileink evaluation and current platform limitations.
+- `.github/workflows/ci.yml`: formatting, lint, and cross-platform tests.
 
 ## Development
 
-Install a stable Rust toolchain with rustfmt and clippy, then run:
+The workspace MSRV is Rust 1.87, matching the current wgpu 30 requirement.
 
-~~~sh
+```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-~~~
+```
+
+To render a sample stroke offscreen on a desktop machine with a usable WGPU adapter:
+
+```sh
+cargo run -p rasm-renderer-tileink --example render_stroke --release
+```
+
+The example writes `target/renderer-spike.png`. GPU initialization is deliberately not part of automated unit tests, so CI does not assume every runner has a usable graphics adapter.
 
 ## Current status
 
-The first milestone establishes exact timeline time, reversible canvas/screen transforms, adaptive pointer filtering, and CI. The actual renderer and app shell are deliberately deferred until these contracts are tested.
+The repository now has exact timeline time, reversible canvas/screen transforms, adaptive pointer smoothing, pressure-aware dab sampling, and an experimental GPU canvas adapter. The actual app shell, Android renderer, document model, persistent tiles, and animation editor are still future milestones.
 
-Pull requests are validated by GitHub Actions on Linux, Windows, and macOS before merge.
+Pull requests are validated by GitHub Actions on Linux, Windows, and macOS.
