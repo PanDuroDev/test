@@ -6,6 +6,11 @@
 
 use std::fmt;
 
+mod geometry;
+pub use geometry::{
+    StrokeGeometryConfig, StrokeGeometryError, StrokeMesh, StrokeVertex, tessellate_stroke_mesh,
+};
+
 use glam::DVec2;
 
 /// Errors returned when validating pen input or sampling a stroke.
