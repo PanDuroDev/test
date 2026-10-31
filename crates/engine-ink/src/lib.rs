@@ -269,11 +269,8 @@ mod tests {
 
     #[test]
     fn single_sample_produces_one_dab() {
-        let dabs = tessellate_stroke(
-            &[sample(3.0, 4.0, Some(1.0), 10)],
-            BrushConfig::default(),
-        )
-        .expect("valid stroke");
+        let dabs = tessellate_stroke(&[sample(3.0, 4.0, Some(1.0), 10)], BrushConfig::default())
+            .expect("valid stroke");
 
         assert_eq!(dabs.len(), 1);
         assert_eq!(dabs[0].position(), DVec2::new(3.0, 4.0));
@@ -293,11 +290,8 @@ mod tests {
 
     #[test]
     fn missing_pressure_uses_full_pressure_fallback() {
-        let dabs = tessellate_stroke(
-            &[sample(0.0, 0.0, None, 0)],
-            BrushConfig::default(),
-        )
-        .expect("valid stroke");
+        let dabs = tessellate_stroke(&[sample(0.0, 0.0, None, 0)], BrushConfig::default())
+            .expect("valid stroke");
 
         assert_eq!(dabs[0].radius(), 8.0);
     }
