@@ -189,10 +189,7 @@ pub fn tessellate_stroke_mesh(
         push_triangle(&mut mesh, right_a, right_b, left_b);
     }
 
-    let first_direction = unit_or(
-        dabs[1].position() - dabs[0].position(),
-        DVec2::X,
-    );
+    let first_direction = unit_or(dabs[1].position() - dabs[0].position(), DVec2::X);
     let last = dabs.len() - 1;
     let last_direction = unit_or(
         dabs[last].position() - dabs[last - 1].position(),
@@ -219,10 +216,7 @@ pub fn tessellate_stroke_mesh(
 
 fn section_normal(dabs: &[BrushDab], index: usize) -> DVec2 {
     if index == 0 {
-        return perpendicular(unit_or(
-            dabs[1].position() - dabs[0].position(),
-            DVec2::X,
-        ));
+        return perpendicular(unit_or(dabs[1].position() - dabs[0].position(), DVec2::X));
     }
 
     let last = dabs.len() - 1;
@@ -245,12 +239,7 @@ fn section_normal(dabs: &[BrushDab], index: usize) -> DVec2 {
     unit_or(normal_sum, perpendicular(outgoing))
 }
 
-fn miter_offset(
-    dabs: &[BrushDab],
-    index: usize,
-    normal: DVec2,
-    max_miter_ratio: f64,
-) -> DVec2 {
+fn miter_offset(dabs: &[BrushDab], index: usize, normal: DVec2, max_miter_ratio: f64) -> DVec2 {
     let radius = dabs[index].radius();
     if index == 0 || index + 1 == dabs.len() {
         return normal * radius;
@@ -282,15 +271,11 @@ fn push_disk(
 
     for segment in 0..segment_count {
         let angle = 2.0 * PI * segment as f64 / segment_count as f64;
-        let point = dab.position()
-            + DVec2::new(angle.cos(), angle.sin()) * dab.radius();
+        let point = dab.position() + DVec2::new(angle.cos(), angle.sin()) * dab.radius();
         perimeter.push(push_vertex(mesh, point, config)?);
     }
 
-    for (current, next) in perimeter
-        .iter()
-        .zip(perimeter.iter().cycle().skip(1))
-    {
+    for (current, next) in perimeter.iter().zip(perimeter.iter().cycle().skip(1)) {
         push_triangle(mesh, center, *current, *next);
     }
 
@@ -331,7 +316,8 @@ fn push_vertex(
     if mesh.vertices.len() >= config.max_vertices {
         return Err(StrokeGeometryError::TooManyVertices);
     }
-    let index = u32::try_from(mesh.vertices.len()).map_err(|_| StrokeGeometryError::IndexOverflow)?;
+    let index =
+        u32::try_from(mesh.vertices.len()).map_err(|_| StrokeGeometryError::IndexOverflow)?;
     mesh.vertices.push(StrokeVertex { position });
     Ok(index)
 }
@@ -374,9 +360,7 @@ mod tests {
 
     use crate::{BrushConfig, StrokeSample, tessellate_stroke};
 
-    use super::{
-        StrokeGeometryConfig, StrokeGeometryError, tessellate_stroke_mesh,
-    };
+    use super::{StrokeGeometryConfig, StrokeGeometryError, tessellate_stroke_mesh};
 
     fn dabs(points: &[(f64, f64, f32)]) -> Vec<crate::BrushDab> {
         let samples: Vec<_> = points
@@ -396,7 +380,11 @@ mod tests {
 
     fn assert_mesh_indices_are_valid(mesh: &super::StrokeMesh) {
         assert_eq!(mesh.indices().len() % 3, 0);
-        assert!(mesh.indices().iter().all(|index| (*index as usize) < mesh.vertices().len()));
+        assert!(
+            mesh.indices()
+                .iter()
+                .all(|index| (*index as usize) < mesh.vertices().len())
+        );
         for triangle in mesh.indices().chunks_exact(3) {
             let a = mesh.vertices()[triangle[0] as usize].position();
             let b = mesh.vertices()[triangle[1] as usize].position();
@@ -405,9 +393,11 @@ mod tests {
             let ac = c - a;
             assert!(ab.x * ac.y - ab.y * ac.x > 0.0);
         }
-        assert!(mesh.vertices().iter().all(|vertex| {
-            vertex.position().x.is_finite() && vertex.position().y.is_finite()
-        }));
+        assert!(
+            mesh.vertices().iter().all(|vertex| {
+                vertex.position().x.is_finite() && vertex.position().y.is_finite()
+            })
+        );
     }
 
     #[test]
@@ -421,8 +411,8 @@ mod tests {
     #[test]
     fn a_single_dab_becomes_a_disk() {
         let input = dabs(&[(4.0, 7.0, 0.75)]);
-        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
-            .expect("valid disk");
+        let mesh =
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()).expect("valid disk");
 
         assert!(mesh.triangle_count() >= 16);
         assert_mesh_indices_are_valid(&mesh);
@@ -468,9 +458,11 @@ mod tests {
         let section_start = corner_index * 2;
         let section_vertices = &mesh.vertices()[section_start..section_start + 2];
 
-        assert!(section_vertices
-            .iter()
-            .all(|vertex| vertex.position().distance(center) <= maximum));
+        assert!(
+            section_vertices
+                .iter()
+                .all(|vertex| vertex.position().distance(center) <= maximum)
+        );
         assert_mesh_indices_are_valid(&mesh);
     }
 
@@ -485,8 +477,8 @@ mod tests {
     #[test]
     fn pressure_changes_mesh_width() {
         let input = dabs(&[(0.0, 0.0, 0.1), (30.0, 0.0, 1.0)]);
-        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
-            .expect("pressure mesh");
+        let mesh =
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()).expect("pressure mesh");
 
         let first_pair = &mesh.vertices()[0..2];
         let last_section_start = (input.len() - 1) * 2;
