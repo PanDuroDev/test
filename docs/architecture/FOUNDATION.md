@@ -18,19 +18,23 @@
 
 ## 2. قرارات المنصة واللغة
 
+### المنتج PC Desktop فقط
+
+المنتج تطبيق مكتبي للكمبيوتر فقط، مع Windows كمنصة البداية. Android وiOS ليسا منصتين مستهدفتين للمنتج. يظل محرك Rust مستقلًا عن نظام التشغيل قدر الإمكان حتى لا ترتبط الحسابات أو بيانات المستند بواجهة Windows.
+
 ### محرّك Rust مستقل
 
 Rust هو الاختيار للمسارات الحساسة للأداء والحسابات: هندسة المسارات، الفرش، البلاطات، تركيب الطبقات، إدارة المستند، وتشغيل الإطارات. لا نضع هذه الحسابات داخل طبقة الواجهة ولا ننشئ Backend شبكيًا بلا حاجة.
 
-### واجهة Kotlin
+### طبقة Desktop لم تُحسم بعد
 
-Kotlin مناسب لواجهة Android، إدارة ملفات التطبيق، التكامل مع النظام، lifecycle، وإدخال القلم. يمكن أن تكون واجهة التطبيق مبنية بـ Compose، مع سطح عرض مخصص للمحرّك بدل تمرير كل نقطة رسم عبر composable UI state.
+يجب اختيار إطار النافذة والواجهة بعد نموذج Windows يقيس إدخال القلم، pointer history، pressure/tilt، تكامل wgpu، دورة حياة Surface، وإمكانية بناء واجهة مخصصة لتطبيق رسم. لا نختار إطارًا لمجرد أنه مكتوب بـ Rust أو لأنه مناسب لتطبيقات CRUD.
 
-UniFFI مرشح لحدود Rust/Kotlin، ويمكن استخدام توليد Swift bindings عند إضافة iPadOS. الربط لا يعني أن كل حركة قلم تمر عبر استدعاء FFI منفصل؛ يجب تجميع عينات الإدخال في دفعات صغيرة أو استخدام buffer/queue لتجنب كلفة الاستدعاءات الكثيرة.
+تجربة Android/Kotlin UniFFI الموجودة محفوظة كاختبار تكامل مستقل للمحرك، ولا تمثل طبقة واجهة المنتج ولا تفرض اعتماد Kotlin أو Compose على تطبيق Desktop.
 
-### لماذا لا نستخدم Kotlin للمحرّك كله؟
+### لماذا لا نربط المحرك بواجهة بعينها؟
 
-يمكن كتابة تطبيق رسم في Kotlin، لكن المسار المطلوب يتضمن محرك هندسة وفرش وGPU وذاكرة بلاطات وعمليات compositing قابلة لإعادة الاستخدام على منصات مختلفة. Rust مع wgpu يعطي فصلًا أوضح للمحرك، مع بقاء Kotlin حيث يتفوق: تكامل Android وواجهة التطبيق.
+لأن مسار الرسم يحتاج إدخالًا منخفض الكمون، وتحديثًا جزئيًا للـ Canvas، وإدارة GPU مستقلة عن حالة عناصر الواجهة. يجب أن تبقى طبقة UI مسؤولة عن الأدوات واللوحات، بينما يملك المحرك المستند والهندسة والـ rendering resources.
 
 ## 3. طبقات التقنية والمكتبات
 
@@ -42,8 +46,8 @@ UniFFI مرشح لحدود Rust/Kotlin، ويمكن استخدام توليد Sw
 | Tessellation | lyon | يحول المسارات إلى مثلثات قابلة للرفع إلى GPU | يجب تحديد tolerance حسب zoom |
 | الفرش | Hokusai أو libmypaint | منطق الفرش والضغط والميل وتوليد dabs موجود بدل إعادة اختراع كل شيء | يجب قياس التكامل والذاكرة والـ latency على الجهاز المستهدف |
 | إدخال الصور | image | فك وترميز صيغ الصور الشائعة | إدارة ICC والألوان تحتاج طبقة منفصلة |
-| الربط | UniFFI | توليد واجهات Kotlin وSwift من Rust | جسر DTO أولي قيد التنفيذ؛ لا يوجد بعد استدعاء من APK أو إثبات threading/device runtime |
-| واجهة Android | Kotlin + Compose | تكامل نظام Android وواجهة قابلة للتطوير | منطقة الرسم ليست لوحة Compose عادية؛ تحتاج مسار عرض منخفض الكمون |
+| الربط الاختياري | UniFFI | واجهة DTO تجريبية بين Rust وKotlin للاختبارات | ليست جزءًا مطلوبًا من تطبيق Desktop |
+| نافذة وإدخال Desktop | لم يُحسم | اختيار بعد نموذج Windows يقيس القلم والنافذة وGPU | لا يعتمد إطار UI قبل اختبار Surface وإدخال pen فعليًا |
 
 ### قرارات عدم الاعتماد حاليًا
 
@@ -88,7 +92,7 @@ p_d = \frac{R(-\theta)\,(p_s-t)}{z}
 - الميل Tilt والاتجاه Azimuth/Barrel عند توفرهما.
 - نوع المؤشر: قلم أو إصبع أو فأرة.
 
-على Android يجب الاحتفاظ بالعينات التاريخية التي يوفرها MotionEvent بدل أخذ آخر نقطة فقط. يمكن استخدام motion prediction لتحسين الإحساس بالكمون، لكن النقاط المتوقعة مؤقتة ولا تُحفظ في بيانات الضربة؛ عند وصول العينات الحقيقية تُستبدل بها التوقعات.
+على Windows يجب تقييم Windows Pointer APIs والاحتفاظ بتاريخ العينات الذي يوفره النظام بدل أخذ آخر نقطة فقط. تُنقل pressure وtilt والاتجاه عند توفرها، مع توحيد مصدر الوقت إلى monotonic timestamps. أي prediction يبقى مؤقتًا ولا يُحفظ في بيانات الضربة؛ عند وصول العينات الحقيقية تُستبدل به.
 
 ### 4.3 التنعيم وإعادة بناء المسار
 
@@ -221,7 +225,7 @@ C_o=C_s+C_d(1-\alpha_s)
 ## 8. نطاق النسخة الأولى
 
 ### داخل النطاق
-- Android tablet-first مع محرك Rust مستقل.
+- PC Desktop فقط، Windows أولًا، مع محرك Rust مستقل.
 - فرشاة ضغط أساسية وممحاة وألوان.
 - طبقات raster وundo/redo.
 - Canvas pan/zoom/rotate.
@@ -265,19 +269,18 @@ C_o=C_s+C_d(1-\alpha_s)
 - [lyon](https://docs.rs/lyon/latest/lyon/): path tessellation.
 - [Hokusai](https://github.com/reearth/hokusai): مرشح لمحرك الفرش المتوافق مع MyPaint.
 - [Vello GPU](https://docs.rs/vello_gpu/latest/vello_gpu/): renderer vector GPU مع قيود معلنة تستلزم الحذر.
-- [UniFFI](https://mozilla.github.io/uniffi-rs/latest/): توليد Kotlin وSwift bindings.
-- [Compose Multiplatform](https://kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html): دعم المنصات وتوافق الإصدارات.
-- [Android stylus input](https://developer.android.com/develop/ui/views/touch-and-input/stylus-input/advanced-stylus-features): الضغط والميل وmotion prediction.
+- [UniFFI](https://mozilla.github.io/uniffi-rs/latest/): توليد Kotlin bindings للتجربة التكاملية المنفصلة فقط.
+- [Windows Pointer Input](https://learn.microsoft.com/en-us/windows/win32/inputmsg/using-pointer-input-messages): إدخال القلم والمؤشر على Windows.
 - [OpenRaster](https://www.openraster.org/): تبادل ملفات الصور ذات الطبقات.
 
 
 ## 11. تنفيذ أساس إدخال القلم وتجربة Renderer
 
-أضيفت طبقة مستقلة `rasm-engine-ink` بين واجهة النظام ومحركات العرض. تستقبل عينات موحدة بإحداثيات مستند من نوع f64 وضغط اختياري normalized وتوقيت monotonic. تولّد dabs حسب المسافة الهندسية، لا حسب عدد MotionEvent callbacks، مع منحنى ضغط قابل للضبط وتحديد أقصى لعدد dabs.
+أضيفت طبقة مستقلة `rasm-engine-ink` بين واجهة النظام ومحركات العرض. تستقبل عينات موحدة بإحداثيات مستند من نوع f64 وضغط اختياري normalized وتوقيت monotonic. تولّد dabs حسب المسافة الهندسية، لا حسب عدد callbacks الخاصة بنظام التشغيل، مع منحنى ضغط قابل للضبط وتحديد أقصى لعدد dabs.
 
 أضيف `rasm-renderer-tileink` كمحول تجريبي فقط. يحول كل dab إلى SDF circle في Tileink Canvas، ويقدم مثالًا يرسم إلى PNG عبر WGPU. يجب إبقاء أنواع Tileink خارج مستند المشروع وواجهة FFI.
 
-**سبب عدم اعتماد Tileink للإنتاج الآن:** مصفوفة التوافق المنشورة لا تعلن دعم Android أو iOS، وأنواع Canvas وRenderer وRetainedScene غير Send/Sync. يمكن اختبارها على Windows/macOS desktop، لكن هذا لا يثبت توافقها مع Android tablet-first. قرار المحرك النهائي مشروط بتجربة Surface فعلية على Android ARM64، وقياس زمن الرسم، واستهلاك الذاكرة، وتحديث المناطق الصغيرة.
+**سبب عدم اعتماد Tileink للإنتاج الآن:** هو محول تجريبي لا يستهلك `StrokeMesh` الحالي ولا يثبت بعد جودة الرسم أو الأداء أو دورة حياة Surface على Windows. يمكن إبقاؤه كمرجع للمقارنة المكتبية، لكن قرار Renderer النهائي مشروط بتجربة Windows Surface فعلية، وقياس زمن الرسم واستهلاك الذاكرة وتحديث المناطق الصغيرة.
 
 تم رفع MSRV للمستودع إلى Rust 1.87 ليتوافق مع متطلب wgpu 30 المنشور. تفاصيل تقييم المكتبة وشروط اعتمادها موثقة في [RENDERER_SPIKE.md](RENDERER_SPIKE.md).
 
@@ -298,8 +301,8 @@ C_o=C_s+C_d(1-\alpha_s)
 تضيف `DirtyTileSet` تجميعًا idempotent للبلاطات المتأثرة، ودعم توسيع المستطيل بهامش finite non-negative، وحدًا أعلى configurable. الإضافة transactional: عند تخطي الحد ترجع خطأ ولا تترك إدراجًا جزئيًا. هذا ليس GPU cache ولا invalidation graph للطبقات، ولا يحدد حجم البلاطة الإنتاجي؛ هذه قرارات لاحقة تحتاج تكاملًا وقياسات.
 
 
-### 14. إثبات جسر Android FFI — قيد التنفيذ
+### 14. تجربة Android FFI محفوظة — ليست هدف المنتج
 
-تبدأ تجربة Android بحد Rust/Kotlin منفصل بدل ربط الأنواع الداخلية مباشرة بالواجهة. `rasm-engine-ffi` يعرّف DTOs للعينات والحدود وإحداثيات البلاطات، ويستدعي `engine-ink` و`engine-tiles` خلف واجهة UniFFI. لا تتسرب أنواع `glam` أو `BrushDab` أو `StrokeMesh` أو `Tileink` أو `wgpu` إلى Kotlin.
+يعرّف `rasm-engine-ffi` DTOs للعينات والحدود وإحداثيات البلاطات، ويستدعي `engine-ink` و`engine-tiles` خلف واجهة UniFFI. لا تتسرب أنواع `glam` أو `BrushDab` أو `StrokeMesh` أو `Tileink` أو `wgpu` إلى Kotlin. دُمج PR #14 لإثبات بناء Android ARM64 وتوليد Kotlin bindings، ويضيف PR #15 smoke host لاختبار تحميل المكتبة والاستدعاء على Emulator.
 
-يستهدف البناء الأول Android ARM64 (`aarch64-linux-android`) مع NDK مثبت الإصدار. يتحقق CI من بناء shared library وتوليد Kotlin bindings من metadata. هذا ليس إثباتًا لتشغيل APK أو استدعاء JNI/UniFFI على جهاز؛ هذه مرحلة لاحقة تتطلب Android host واختبار runtime فعليًا. تفاصيل التنفيذ في [Issue #14](https://github.com/PanDuroDev/test/issues/14).
+هذه التجربة محفوظة لاختبار حدود FFI فقط؛ لا تعني وجود تطبيق Android مستهدف، ولا تدخل ضمن مسار بناء تطبيق PC Desktop. لا تُحذف لمجرد أن المنتج أصبح PC-only.

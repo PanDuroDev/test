@@ -1,8 +1,8 @@
 # خطة المشروع وسجل التنفيذ
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
-> آخر تحديث: 2026-10-31  
-> الحالة العامة: **أساس المحرك وإدخال القلم وهندسة الضربة ونظام البلاطات CPU-side موجود؛ إثبات جسر Rust/Kotlin لـ Android قيد التنفيذ، ولا يوجد تطبيق Android أو Renderer إنتاجي بعد.**
+> آخر تحديث: 2026-11-01  
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. أساس Rust والفرش وهندسة الضربة والبلاطات موجود؛ لا توجد واجهة Desktop قابلة للاستخدام أو Renderer إنتاجي أو Document Model بعد. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -28,20 +28,22 @@
 
 ### المنصات المستهدفة
 
-- البداية المستهدفة: Android، مع أولوية للأجهزة اللوحية والقلم.
+- المنصة المستهدفة: تطبيق PC Desktop فقط، مع Windows كمنصة المنتج الأولى.
+- لا يوجد تطبيق Android أو iOS ضمن نطاق المنتج.
 - المحرك: Rust مستقل عن الواجهة والمنصة قدر الإمكان.
-- الواجهة: Kotlin + Jetpack Compose.
+- طبقة النافذة والإدخال والواجهة المكتبية لم تُحسم بعد؛ يجب اختيارها بعد نموذج Windows يقيس القلم وGPU وتكامل الواجهة.
 - لا يوجد Backend أو حساب سحابي مطلوب في الإصدار الأول؛ الملفات والرسم والحفظ محلية.
 
-**تنبيه الحالة:** المستودع حاليًا مكتبات Rust تأسيسية. لا يحتوي بعد على تطبيق Android أو واجهة رسم أو محرر Timeline قابل للاستخدام.
+**تنبيه الحالة:** المستودع حاليًا مكتبات Rust تأسيسية وتجارب تكامل. لا يحتوي بعد على تطبيق Desktop أو واجهة رسم أو محرر Timeline قابل للاستخدام.
 
 ## 3. خريطة المعمارية والقرارات الحالية
 
 | المجال | القرار/المرشح الحالي | الحالة والتحفظ |
 | --- | --- | --- |
 | محرك الحسابات والمستند | Rust workspace | أساس أولي موجود، نموذج المستند الكامل غير موجود |
-| واجهة Android | Kotlin + Compose | قرار معماري؛ لم يبدأ التطبيق بعد |
-| ربط Rust مع Kotlin | UniFFI | تجربة FFI وKotlin binding generation قيد التنفيذ في Issue #14؛ لم يثبت الاستدعاء داخل APK أو على جهاز بعد |
+| واجهة Desktop | لم يُحسم الإطار بعد | Windows-first؛ القرار ينتظر نموذجًا يقيس إدخال القلم وwgpu وسطح الرسم |
+| إدخال Windows | Windows Pointer APIs مرشح | يجب إثبات الضغط والميل وسجل العينات والكمون على Windows فعلي |
+| ربط Rust مع Kotlin | UniFFI تجريبي | PR #14 مدمج وPR #15 يضيف smoke host منفصلًا؛ لا يمثل واجهة المنتج ولا يعتمد عليه تطبيق Desktop |
 | GPU | wgpu | يظهر في تبعية تجربة Tileink؛ لا يوجد renderer إنتاجي |
 | الرياضيات | glam + kurbo | مثبتان في workspace |
 | بناء المسارات | lyon مرشح | لم يُدمج بعد |
@@ -52,8 +54,8 @@
 
 ### قواعد معمارية يجب الحفاظ عليها
 
-- لا تضع منطق الفرش أو المستند أو الرياضيات داخل واجهة Compose.
-- لا تجعل `engine-core` يعتمد على أنواع GPU أو أنواع Tileink أو Android.
+- لا تضع منطق الفرش أو المستند أو الرياضيات داخل طبقة الواجهة المكتبية.
+- لا تجعل `engine-core` يعتمد على أنواع GPU أو أنواع Tileink أو تفاصيل Windows/Android.
 - لا تستخدم أنواع Tileink في صيغة الملف أو واجهة FFI.
 - حافظ على فصل Document space وViewport space وPhysical pixel space وStage world space.
 - استخدم التوقيت المطلق/monotonic حيث يلزم، وتجنب تراكم أخطاء float في timeline.
@@ -136,8 +138,9 @@
 - `crates/engine-core/`: أساس الرياضيات والوقت والتحويلات والتنعيم.
 - `crates/engine-ink/`: عينات القلم وتوليد dabs وهندسة الضربة المتصلة وحدود mesh.
 - `crates/engine-tiles/`: تغطية البلاطات وتتبع البلاطات المتضررة على CPU.
-- `crates/engine-ffi/`: DTO boundary عبر UniFFI؛ إثبات Android ARM64 قيد التنفيذ في Issue #14.
+- `crates/engine-ffi/`: DTO boundary عبر UniFFI، محفوظ كتجربة تكامل منفصلة.
 - `tools/uniffi-bindgen/`: أداة توليد Kotlin bindings من metadata المكتبة.
+- `android/ffi-smoke/`: اختبار Android مستقل لجسر FFI، وليس تطبيق المنتج.
 - `crates/renderer-tileink/`: محول Tileink التجريبي ومثال WGPU.
 - `docs/architecture/FOUNDATION.md`: وثيقة التصميم والأساس الرياضي والمعماري.
 - `docs/architecture/RENDERER_SPIKE.md`: تقييم Tileink وحدود اعتماده.
@@ -153,9 +156,9 @@
 
 ### ما لا يمكن الادعاء بوجوده بعد
 
-- تطبيق Android أو واجهة فعلية.
-- إدخال قلم Android متصل بالمحرك.
-- Renderer يعمل على Android Surface.
+- تطبيق Desktop أو واجهة رسم فعلية.
+- تكامل Windows pen/pointer متصل بالمحرك ومختبر على جهاز فعلي.
+- Renderer إنتاجي أو Surface مكتبي يعرض الضربات.
 - ضربة فرشاة متصلة بجودة إنتاجية.
 - دمج dirty regions المتجاورة أو invalidation graph للطبقات والتحويلات أو GPU tile cache.
 - طبقات وصيغة ملفات وحفظ تلقائي وundo/redo.
@@ -222,41 +225,35 @@
 
 **تكامل الضربة والبلاطات:** أُنجز عبر [Issue #13](https://github.com/PanDuroDev/test/issues/13) و[PR #13](https://github.com/PanDuroDev/test/pull/13)، المدمج بالالتزام `2cea1784fcc601e06342be2786af1eba4904ef52`. توفر `StrokeMesh::bounds()` الآن `StrokeBounds` ليحوّلها المستهلك إلى `DocumentRect` وtile coverage دون إعادة حساب الحدود.
 
-### المرحلة 5: إثبات مسار Android والقلم وGPU — بدأت عبر [Issue #14](https://github.com/PanDuroDev/test/issues/14)
+### تجربة تكامل FFI السابقة: Android/Kotlin — محفوظة ومنفصلة عن هدف المنتج
 
-**الهدف:** تقليل المخاطرة الأكبر مبكرًا: التأكد أن المحرك يمكن عرضه والتفاعل معه على جهاز Android حقيقي.
+هذه تجربة تحقق لحدود Rust/Kotlin فقط، وليست مسار بناء تطبيق المنتج.
 
-**الجزء الأول قيد التنفيذ: جسر Rust/Kotlin**
+**الحالة:**
+- PR: [#14](https://github.com/PanDuroDev/test/pull/14) — مدمج.
+- PR: [#15](https://github.com/PanDuroDev/test/pull/15) — مفتوح؛ يضيف Android smoke host ويختبر تحميل المكتبة واستدعاء Rust من Kotlin على x86_64 Emulator.
+- PR #14 أضاف `rasm-engine-ffi` باستخدام UniFFI 0.32.2، وDTOs عددية للعينات والحدود والبلاطات، وبناء Android ARM64 وتوليد Kotlin bindings.
+- PR #15 يبني APK ويحتوي على مكتبات ARM64 وx86_64. في تشغيل CI #49 نجح بناء APK، والتحقق من المكتبتين، وإقلاع Emulator بعد تفعيل KVM، وتشغيل **3 instrumentation tests بنجاح**.
+- أضيف تمكين KVM في GitHub Actions وتحسين مدخلات Gradle لتتبع ملفات workspace ومولد UniFFI؛ نجحت بعدها جميع فحوص Rust وFormat وClippy والاختبارات الثلاثة على Emulator في CI #49.
 
-- Issue: [#14](https://github.com/PanDuroDev/test/issues/14) — مفتوح.
-- Branch: `android/uniffi-rust-bridge`.
-- إضافة `rasm-engine-ffi` كحد FFI مستقل باستخدام UniFFI 0.32.2.
-- تمرير DTOs عددية للعينات، ثم استدعاء `engine-ink` لحساب mesh bounds و`engine-tiles` لحساب tile coverage بحد أعلى قدره 16,384 بلاطة لكل preview.
-- بناء shared library لـ `aarch64-linux-android` عبر `cargo-ndk 4.1.2` وAndroid NDK `28.2.13676358` مع API level 23.
-- توليد Kotlin bindings من metadata المكتبة في CI.
-- لا يضيف هذا الجزء APK أو Gradle project أو Compose UI، ولا يثبت حتى الآن أن Kotlin استدعى Rust داخل تطبيق أو جهاز فعلي.
+**حدود التجربة:**
+- لا تثبت إدخال قلم فعلي أو عرض GPU أو وجود واجهة منتج.
+- لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
+- تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
-**ما يلي بعد إثبات البناء والتوليد:** إضافة Android host يضم المكتبة وJNA (UniFFI Kotlin runtime يحتاج JNA 5.12.0 أو أحدث)، ثم اختبار MotionEvent التاريخية والضغط والميل والتوقيت قبل بدء Surface renderer.
+### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — [Issue #17](https://github.com/PanDuroDev/test/issues/17)
 
+**الهدف:** إنشاء أصغر نموذج مكتبي يثبت أن المحرك الحالي يمكن عرضه والتفاعل معه على Windows قبل بناء واجهة المنتج.
 
-**المهام المقترحة:**
+**المهام:**
+- مقارنة خيارات نافذة/إدخال/واجهة مكتبية، مع إبقاء اختيار إطار UI مفتوحًا حتى ظهور نتائج الاختبار.
+- اختبار Windows Pointer APIs لجمع موضع القلم والضغط والميل والعينات التاريخية عند توفرها.
+- إنشاء نافذة Windows وسطح wgpu وعرض `StrokeMesh` فعليًا.
+- فصل UI/input queue/engine worker/render thread/IO worker.
+- قياس input-to-visible latency، استهلاك الذاكرة، وإعادة إنشاء Surface وفقدان GPU context.
+- إبقاء Tileink adapter تجربة مقارنة فقط، وعدم اعتماده قبل اختبارات جودة وأداء فعلية.
 
-- إنشاء تطبيق Android تجريبي صغير Kotlin + Compose، وليس واجهة المنتج النهائية.
-- التقاط MotionEvent التاريخية والضغط والميل والتوقيت ونوع المؤشر.
-- تمرير العينات على دفعات إلى Rust؛ لا تستدع FFI لكل نقطة دون قياس.
-- اختبار UniFFI أو بديل مناسب بعقد API صغير.
-- إنشاء WGPU/Surface render path على Android ARM64.
-- فصل UI thread وinput queue وrender thread وIO worker بوضوح.
-- اختبار توقف/استئناف Activity وإعادة إنشاء Surface وفقدان GPU context والذاكرة.
-- مقارنة خيارات Renderer: محول مخصص مبني على wgpu مقابل أي اعتماد مكتبي مثل Tileink.
-
-**معايير القبول:**
-
-- بناء وتشغيل APK على جهاز Android ARM64 فعلي.
-- ظهور الضربة على Surface، مع تحقق الضغط/الميل حيث يدعمه الجهاز.
-- لا يحدث crash عند إعادة إنشاء Surface أو تدوير دورة الحياة المدعومة.
-- توثيق GPU backend وقيود الجهاز وقياس أولي input-to-visible latency.
-- قرار موثق بشأن الاستمرار مع Renderer مخصص أو تبعية موجودة. لا تعتمد Tileink على Android دون نجاح هذا الاختبار.
+**معايير القبول:** نموذج يعمل على Windows فعليًا، يعرض stroke mesh على GPU، يثبت وصول بيانات pen/pointer، ويقدم قياسات قابلة للتكرار مع توثيق الجهاز والـ backend والقيود. لا يُدّعى دعم القلم أو GPU قبل الاختبار الفعلي.
 
 ### المرحلة 6: نموذج المستند والطبقات والتراجع
 
@@ -279,11 +276,14 @@
 - اختبارات تعطل/انقطاع أثناء الحفظ أو محاكاة فشل كتابة.
 - undo/redo يعيد الحالة المنطقية والبصرية الصحيحة.
 
-### المرحلة 7: أول Canvas قابل للاستخدام
+### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
-**الهدف:** دمج إدخال Android والمحرك والـ Renderer والمستند في شاشة رسم فعلية.
+**الهدف:** دمج إدخال Windows والمحرك والـ Renderer والمستند في شاشة رسم فعلية.
 
 **المهام المقترحة:**
+
+- التقاط Windows pen/pointer history والضغط والميل والتوقيت ونوع المؤشر عبر adapter مكتبي.
+- تمرير العينات إلى Rust عبر queue/دفعات مع منع إسقاطها بصمت.
 
 - Canvas pan/zoom/rotate.
 - قلم وفرشاة أساسية وممحاة وألوان.
@@ -406,7 +406,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، المرحلة 4 الأساسية مدمجة عبر PR #12، وIssue #13 مفتوح لإضافة bounds إلى StrokeMesh. بعده، ابدأ إثبات Android Surface والقلم وGPU وفق معايير المرحلة 5، ولا تدّع نجاح تشغيل Android قبل اختباره على جهاز فعلي.
+6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تابع PR #16 لتثبيت هذا الاتجاه، ثم نفّذ Issue #17 لبناء نموذج النافذة وwgpu وWindows pen input. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -421,4 +421,7 @@ target/renderer-spike.png
 - 2026-10-31: بدء المرحلة 4 عبر Issue #11؛ إنشاء `rasm-engine-tiles` وإضافة grid coverage وtransactional dirty tile set على فرع منفصل.
 - 2026-10-31: إكمال أساس المرحلة 4 ودمج PR #12 بالالتزام `e3cafa2aa1bf6997c34892f6be85d04ac58ded2c` بعد نجاح 59 اختبارًا على كل من Linux وWindows وmacOS، ونجاح format وClippy.
 - 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
-- 2026-10-31: بدء أول إثبات Android عبر Issue #14 والفرع `android/uniffi-rust-bridge`: جسر UniFFI DTO ضيق، بناء Android ARM64، وتوليد Kotlin bindings قيد المراجعة؛ لا يوجد APK أو اختبار جهاز في هذه الخطوة.
+- 2026-10-31: دمج PR #14 لإضافة جسر UniFFI DTO وبناء Android ARM64 وتوليد Kotlin bindings.
+- 2026-10-31: فتح PR #15 لإضافة Android FFI smoke host؛ البناء والتغليف نجحا، لكن Emulator لم يكمل الإقلاع في أول تشغيل CI. بقي PR مفتوحًا كتجربة تكامل مستقلة.
+- 2026-11-01: توثيق هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة، عبر PR #16 (مفتوح).
+- 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
