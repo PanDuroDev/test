@@ -55,6 +55,8 @@ val buildRustFfi by tasks.registering(Exec::class) {
         "--release",
         "-p", "rasm-engine-ffi"
     )
+    inputs.file(repositoryRoot.resolve("Cargo.toml"))
+    inputs.dir(repositoryRoot.resolve("crates/engine-core"))
     inputs.dir(repositoryRoot.resolve("crates/engine-ffi"))
     inputs.dir(repositoryRoot.resolve("crates/engine-ink"))
     inputs.dir(repositoryRoot.resolve("crates/engine-tiles"))
@@ -77,6 +79,8 @@ val generateUniFfiKotlin by tasks.registering(Exec::class) {
         "--out-dir", generatedKotlin.absolutePath
     )
     inputs.file(x86_64Library)
+    inputs.file(repositoryRoot.resolve("Cargo.toml"))
+    inputs.dir(repositoryRoot.resolve("tools/uniffi-bindgen"))
     inputs.file(repositoryRoot.resolve("crates/engine-ffi/uniffi.toml"))
     outputs.dir(generatedKotlin)
 }
