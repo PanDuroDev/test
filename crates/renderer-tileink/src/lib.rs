@@ -72,9 +72,8 @@ mod tests {
             StrokeSample::new(DVec2::new(28.0, 8.0), Some(1.0), 100).expect("valid sample"),
         ];
         let dabs = tessellate_stroke(&samples, BrushConfig::default()).expect("valid stroke");
-        let canvas = canvas_from_dabs(
-            64, 64, 1.0, &dabs, Color::from_rgb8(20, 160, 230),
-        ).expect("valid canvas");
+        let canvas = canvas_from_dabs(64, 64, 1.0, &dabs, Color::from_rgb8(20, 160, 230))
+            .expect("valid canvas");
 
         assert_eq!(canvas.draw_count(), dabs.len());
         assert_eq!(canvas.logical_size(), (64, 64));
@@ -98,8 +97,7 @@ mod tests {
 
     #[test]
     fn allows_a_valid_empty_canvas() {
-        let canvas = canvas_from_dabs(64, 64, 1.0, &[], Color::WHITE)
-            .expect("valid empty canvas");
+        let canvas = canvas_from_dabs(64, 64, 1.0, &[], Color::WHITE).expect("valid empty canvas");
         assert_eq!(canvas.draw_count(), 0);
     }
 }
