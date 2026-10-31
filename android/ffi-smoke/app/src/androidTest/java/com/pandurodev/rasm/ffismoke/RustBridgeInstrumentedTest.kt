@@ -63,8 +63,9 @@ class RustBridgeInstrumentedTest {
 
         assertNotNull("Expected the Rust boundary to reject a negative timestamp", failure)
         assertTrue(
-            "Expected an FFI exception, got: $failure",
-            failure !is UnsatisfiedLinkError
+            "Expected the Rust validation message, got: $failure",
+            failure?.message.orEmpty().contains("timestamp", ignoreCase = true)
         )
+        assertTrue("Native library did not load", failure !is UnsatisfiedLinkError)
     }
 }
