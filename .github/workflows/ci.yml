@@ -37,7 +37,9 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: ''
 
       - name: Install pinned Android NDK
         run: sdkmanager --install "ndk;28.2.13676358"
