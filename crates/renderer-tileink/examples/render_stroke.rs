@@ -25,13 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let dabs = tessellate_stroke(&samples, BrushConfig::default())?;
-    let canvas = canvas_from_dabs(
-        WIDTH,
-        HEIGHT,
-        1.0,
-        &dabs,
-        Color::from_rgb8(35, 175, 245),
-    )?;
+    let canvas = canvas_from_dabs(WIDTH, HEIGHT, 1.0, &dabs, Color::from_rgb8(35, 175, 245))?;
 
     let mut renderer =
         WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::from_rgb8(18, 18, 18));
