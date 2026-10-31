@@ -1,0 +1,13 @@
+[package]
+name = "rasm-renderer-tileink"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Experimental desktop renderer adapter backed by Tileink"
+
+[dependencies]
+kurbo.workspace = true
+peniko.workspace = true
+rasm-engine-ink = { path = "../engine-ink" }
+tileink.workspace = true
