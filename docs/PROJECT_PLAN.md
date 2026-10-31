@@ -156,9 +156,9 @@
 
 ### ما لا يمكن الادعاء بوجوده بعد
 
-- تطبيق Desktop أو واجهة رسم فعلية.
-- تكامل Windows pen/pointer متصل بالمحرك ومختبر على جهاز فعلي.
-- Renderer إنتاجي أو Surface مكتبي يعرض الضربات.
+- تطبيق Desktop منتجي قابل للاستخدام أو واجهة أدوات نهائية؛ الموجود نموذج تكامل مستقل في PR #18 وليس تطبيق المنتج.
+- تحقق فعلي من Windows pen/pointer أو GPU على جهاز فعلي؛ الكود موجود واجتاز CI، لكن اختبار الأجهزة لم يحدث.
+- Renderer إنتاجي؛ نموذج WGPU في PR #18 مسار أولي وليس Renderer نهائيًا.
 - ضربة فرشاة متصلة بجودة إنتاجية.
 - دمج dirty regions المتجاورة أو invalidation graph للطبقات والتحويلات أو GPU tile cache.
 - طبقات وصيغة ملفات وحفظ تلقائي وundo/redo.
@@ -443,4 +443,5 @@ target/renderer-spike.png
 - 2026-11-01: دمج PR #16 لتثبيت هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة.
 - 2026-11-01: بدء Issue #17 على فرع `desktop/windows-renderer-prototype`: إضافة نافذة winit، وWGPU surface، وعرض StrokeMesh، وربط Windows pen/pointer history. التنفيذ لم يُثبت بعد عبر CI أو تشغيل فعلي على Windows.
 - 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
-\n- 2026-11-01: اكتمل CI لـ PR #18، مع نجاح format وClippy واختبارات Linux/Windows/macOS وبناء Android ARM64 FFI في التشغيل #41252760860.\n- 2026-11-01: أضيفت مهمة CI لبناء نسخة Windows Release ورفع EXE مع README كـ Artifact لمدة 14 يومًا؛ ينتظر التحقق من تشغيل workflow بعد هذا التغيير.\n
+- 2026-11-01: اكتمل CI لـ PR #18، مع نجاح format وClippy واختبارات Linux/Windows/macOS وبناء Android ARM64 FFI في التشغيل #41252760860.
+- 2026-11-01: أضيفت مهمة CI لبناء نسخة Windows Release ورفع EXE مع README كـ Artifact لمدة 14 يومًا؛ ينتظر التحقق من تشغيل workflow بعد هذا التغيير.
