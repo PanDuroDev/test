@@ -220,7 +220,7 @@
 
 **الحدود المتبقية وليست جزءًا من Issue #11:** لا يوجد دمج لمستطيلات dirty المتجاورة، ولا invalidation graph للطبقات أو التحويلات، ولا GPU texture cache، ولا benchmark يحدد حجم البلاطة الإنتاجي. حجم البلاطة يمرر كإعداد ولا نفترض أن 64 هو الحجم الأمثل. لا يثبت CI أن أي Renderer يعمل على GPU فعلي أو Android.
 
-**المتابعة:** [Issue #13](https://github.com/PanDuroDev/test/issues/13) يضيف مصدرًا موحدًا لحدود هندسة الضربة كي يستطيع المستهلك تحويلها إلى مستطيل invalidation دون إعادة حساب bounds. هذا امتداد تكاملي مستقل ولا يغيّر حقيقة أن أساس tile grid وdirty tracking في Issue #11 مكتمل.
+**تكامل الضربة والبلاطات:** أُنجز عبر [Issue #13](https://github.com/PanDuroDev/test/issues/13) و[PR #13](https://github.com/PanDuroDev/test/pull/13)، المدمج بالالتزام `2cea1784fcc601e06342be2786af1eba4904ef52`. توفر `StrokeMesh::bounds()` الآن `StrokeBounds` ليحوّلها المستهلك إلى `DocumentRect` وtile coverage دون إعادة حساب الحدود.
 
 ### المرحلة 5: إثبات مسار Android والقلم وGPU — بدأت عبر [Issue #14](https://github.com/PanDuroDev/test/issues/14)
 
