@@ -164,10 +164,12 @@ mod tests {
         )
         .expect("valid transform");
         let anchor = DVec2::new(320.0, 180.0);
+        let document_point = transform.screen_to_canvas(anchor);
+        assert_vec2_near(transform.canvas_to_screen(document_point), anchor);
 
         transform.zoom_around(3.25, anchor).expect("valid zoom");
 
-        assert_vec2_near(transform.canvas_to_screen(transform.screen_to_canvas(anchor)), anchor);
+        assert_vec2_near(transform.canvas_to_screen(document_point), anchor);
     }
 
     #[test]
