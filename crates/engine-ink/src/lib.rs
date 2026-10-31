@@ -8,7 +8,8 @@ use std::fmt;
 
 mod geometry;
 pub use geometry::{
-    StrokeGeometryConfig, StrokeGeometryError, StrokeMesh, StrokeVertex, tessellate_stroke_mesh,
+    StrokeBounds, StrokeGeometryConfig, StrokeGeometryError, StrokeMesh, StrokeVertex,
+    tessellate_stroke_mesh,
 };
 
 use glam::DVec2;

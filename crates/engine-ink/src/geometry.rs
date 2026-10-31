@@ -104,6 +104,26 @@ impl StrokeVertex {
     }
 }
 
+/// Axis-aligned bounds of a stroke mesh in document coordinates.
+///
+/// These bounds describe mesh geometry only. They do not include a rasterization
+/// or anti-alias margin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrokeBounds {
+    min: DVec2,
+    max: DVec2,
+}
+
+impl StrokeBounds {
+    pub const fn min(self) -> DVec2 {
+        self.min
+    }
+
+    pub const fn max(self) -> DVec2 {
+        self.max
+    }
+}
+
 /// Indexed triangle mesh for one connected brush stroke.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrokeMesh {
@@ -126,6 +146,30 @@ impl StrokeMesh {
 
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
+    }
+
+    /// Returns the axis-aligned bounds of all mesh vertices in document space.
+    ///
+    /// Returns `None` for an empty mesh. The result does not include a
+    /// rasterization or anti-alias margin; callers must add one when needed.
+    pub fn bounds(&self) -> Option<StrokeBounds> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut vertices = self.vertices.iter();
+        let first = vertices.next()?.position;
+        let mut min = first;
+        let mut max = first;
+
+        for vertex in vertices {
+            min.x = min.x.min(vertex.position.x);
+            min.y = min.y.min(vertex.position.y);
+            max.x = max.x.max(vertex.position.x);
+            max.y = max.y.max(vertex.position.y);
+        }
+
+        Some(StrokeBounds { min, max })
     }
 }
 
@@ -411,6 +455,64 @@ mod tests {
             .expect("empty geometry is valid");
         assert!(mesh.is_empty());
         assert!(mesh.vertices().is_empty());
+    }
+
+    #[test]
+    fn empty_mesh_has_no_bounds() {
+        let mesh = tessellate_stroke_mesh(&[], StrokeGeometryConfig::default())
+            .expect("empty geometry is valid");
+        assert_eq!(mesh.bounds(), None);
+    }
+
+    #[test]
+    fn single_dab_bounds_include_the_disk_extents() {
+        let input = dabs(&[(-10.0, 7.0, 1.0)]);
+        let mesh =
+            tessellate_stroke_mesh(&input, StrokeGeometryConfig::default()).expect("valid disk");
+        let bounds = mesh.bounds().expect("disk has bounds");
+
+        assert!(bounds.min().x < -17.9);
+        assert!(bounds.min().y < -0.9);
+        assert!(bounds.max().x > -2.1);
+        assert!(bounds.max().y > 14.9);
+        assert!(mesh.vertices().iter().all(|vertex| {
+            let point = vertex.position();
+            point.x >= bounds.min().x
+                && point.x <= bounds.max().x
+                && point.y >= bounds.min().y
+                && point.y <= bounds.max().y
+        }));
+    }
+
+    #[test]
+    fn variable_width_negative_coordinate_stroke_bounds_cover_every_vertex() {
+        let input = dabs(&[(-40.0, -15.0, 0.2), (-10.0, 8.0, 1.0), (12.0, 24.0, 0.5)]);
+        let mesh = tessellate_stroke_mesh(&input, StrokeGeometryConfig::default())
+            .expect("valid variable-width stroke");
+        let bounds = mesh.bounds().expect("stroke has bounds");
+
+        let (min_x, min_y, max_x, max_y) = mesh.vertices().iter().fold(
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |(min_x, min_y, max_x, max_y), vertex| {
+                let point = vertex.position();
+                (
+                    min_x.min(point.x),
+                    min_y.min(point.y),
+                    max_x.max(point.x),
+                    max_y.max(point.y),
+                )
+            },
+        );
+
+        assert_eq!(bounds.min(), DVec2::new(min_x, min_y));
+        assert_eq!(bounds.max(), DVec2::new(max_x, max_y));
+        assert!(bounds.min().x < 0.0 && bounds.min().y < 0.0);
+        assert!(bounds.max().x > 0.0 && bounds.max().y > 0.0);
     }
 
     #[test]
