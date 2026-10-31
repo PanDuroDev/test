@@ -153,6 +153,10 @@ impl StrokeMesh {
     /// Returns `None` for an empty mesh. The result does not include a
     /// rasterization or anti-alias margin; callers must add one when needed.
     pub fn bounds(&self) -> Option<StrokeBounds> {
+        if self.is_empty() {
+            return None;
+        }
+
         let mut vertices = self.vertices.iter();
         let first = vertices.next()?.position;
         let mut min = first;
