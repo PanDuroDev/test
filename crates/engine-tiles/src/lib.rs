@@ -33,7 +33,7 @@ impl fmt::Display for TileError {
             Self::ExpansionOverflow => "rectangle expansion produced non-finite coordinates",
             Self::CoordinateOutOfRange => {
                 "document coordinate cannot be represented as a tile index"
-            },
+            }
             Self::TooManyTiles => "rectangle exceeds the configured tile coverage limit",
             Self::TooManyDirtyTiles => "dirty tile set exceeds its configured limit",
         };
@@ -643,7 +643,9 @@ mod tests {
     #[test]
     fn coverage_failure_does_not_change_dirty_set() {
         let mut dirty = DirtyTileSet::new(8).expect("valid set");
-        dirty.mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0)).expect("initial mark");
+        dirty
+            .mark_rect(grid(), rect(0.0, 0.0, 64.0, 64.0))
+            .expect("initial mark");
         let before = dirty.iter().collect::<Vec<_>>();
         let limited_grid = TileGrid::new(1, 2).expect("valid grid");
 
