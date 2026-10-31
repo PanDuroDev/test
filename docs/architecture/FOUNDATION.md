@@ -286,4 +286,4 @@ C_o=C_s+C_d(1-\alpha_s)
 
 أضيفت في `rasm-engine-ink` واجهة renderer-independent تحول dab stream إلى `StrokeMesh` من مثلثات متصلة. تستخدم المقاطع cross-sections متتابعة، ونهايات دائرية، وmiter محدودًا عند الزوايا الحادة، مع حد أقصى لعدد الرؤوس قبل التخصيص. الحالات القريبة من عكس الاتجاه تستخدم normal احتياطيًا بدل إنتاج قيم غير منتهية.
 
-هذه المرحلة لا تقدم حتى الآن anti-alias fringe أو CPU raster/compositing reference، ولا تعني أن محول Tileink يستخدم الشبكة الجديدة؛ محول Tileink الحالي ما زال يرسم dab كـ SDF circles. تتم مراجعة التنفيذ في [PR #9](https://github.com/PanDuroDev/test/pull/9).
+هذه المرحلة لا تقدم حتى الآن anti-alias fringe أو CPU raster/compositing reference، ولا تعني أن محول Tileink يستخدم الشبكة الجديدة؛ محول Tileink الحالي ما زال يرسم dab كـ SDF circles. تتم مراجعة التنفيذ في [PR #10](https://github.com/PanDuroDev/test/pull/10).
