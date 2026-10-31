@@ -23,12 +23,13 @@ use winit::{
 const WINDOW_WIDTH: f64 = 960.0;
 const WINDOW_HEIGHT: f64 = 640.0;
 const MAX_COMPLETED_STROKES: usize = 128;
-const MAX_VERTICES_PER_STROKE: usize = 1_000_000;
+const MAX_TOTAL_VERTICES: usize = 2_000_000;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
 struct PenAxes {
     pressure: Option<f32>,
@@ -200,6 +201,7 @@ impl InputState {
     }
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 #[derive(Debug, Clone, Copy)]
 enum AppEvent {
     InputChanged,
@@ -353,7 +355,10 @@ impl GpuRenderer {
             let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
                 continue;
             };
-            if mesh.is_empty() || vertices.len() > (u32::MAX as usize).saturating_sub(mesh.vertices().len()) {
+            if mesh.is_empty()
+                || vertices.len().saturating_add(mesh.vertices().len()) > MAX_TOTAL_VERTICES
+                || vertices.len() > (u32::MAX as usize).saturating_sub(mesh.vertices().len())
+            {
                 continue;
             }
 
@@ -375,12 +380,16 @@ impl GpuRenderer {
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        let index_count = indices.len().min(u32::MAX as usize) as u32;
+        if indices.is_empty() {
+            indices.push(0);
+        }
         let index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Rasm stroke indices"),
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        (vertex_buffer, index_buffer, indices.len().min(u32::MAX as usize) as u32)
+        (vertex_buffer, index_buffer, index_count)
     }
 
     fn render(&mut self, strokes: &[Vec<StrokeSample>]) {
@@ -601,10 +610,12 @@ unsafe fn handle_windows_pointer_message(
         Graphics::Gdi::ScreenToClient,
         UI::{
             Input::Pointer::{
-                GetPointerPenInfo, GetPointerPenInfoHistory, GetPointerType, PEN_MASK_PRESSURE,
-                PEN_MASK_ROTATION, PEN_MASK_TILT_X, PEN_MASK_TILT_Y, POINTER_PEN_INFO, PT_PEN,
+                GetPointerPenInfo, GetPointerPenInfoHistory, GetPointerType, POINTER_PEN_INFO,
             },
-            WindowsAndMessaging::{MSG, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE},
+            WindowsAndMessaging::{
+                MSG, PEN_MASK_PRESSURE, PEN_MASK_ROTATION, PEN_MASK_TILT_X, PEN_MASK_TILT_Y,
+                PT_PEN, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
+            },
         },
     };
 
