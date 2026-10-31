@@ -241,7 +241,7 @@
 - لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
 - تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
-### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — موثقة في [PR #16](https://github.com/PanDuroDev/test/pull/16) (مفتوح)
+### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — [Issue #17](https://github.com/PanDuroDev/test/issues/17)
 
 **الهدف:** إنشاء أصغر نموذج مكتبي يثبت أن المحرك الحالي يمكن عرضه والتفاعل معه على Windows قبل بناء واجهة المنتج.
 
@@ -406,7 +406,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تابع PR #16 لتثبيت هذا الاتجاه ثم ابدأ نموذج النافذة وwgpu وWindows pen input، ولا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تابع PR #16 لتثبيت هذا الاتجاه، ثم نفّذ Issue #17 لبناء نموذج النافذة وwgpu وWindows pen input. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -424,3 +424,4 @@ target/renderer-spike.png
 - 2026-10-31: دمج PR #14 لإضافة جسر UniFFI DTO وبناء Android ARM64 وتوليد Kotlin bindings.
 - 2026-10-31: فتح PR #15 لإضافة Android FFI smoke host؛ البناء والتغليف نجحا، لكن Emulator لم يكمل الإقلاع في أول تشغيل CI. بقي PR مفتوحًا كتجربة تكامل مستقلة.
 - 2026-11-01: توثيق هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة، عبر PR #16 (مفتوح).
+- 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
