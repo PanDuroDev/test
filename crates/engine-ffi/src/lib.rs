@@ -54,6 +54,17 @@ pub enum EngineBridgeError {
     TileCoverageExceeded,
 }
 
+impl std::fmt::Display for EngineBridgeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInput { message } => formatter.write_str(message),
+            Self::TileCoverageExceeded => {
+                formatter.write_str("stroke exceeds the configured tile coverage limit")
+            }
+        }
+    }
+}
+
 impl EngineBridgeError {
     fn invalid_input(message: impl ToString) -> Self {
         Self::InvalidInput {
