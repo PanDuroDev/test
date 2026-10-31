@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-10-31  
-> الحالة العامة: **مرحلة تأسيس المحرك وتجربة إدخال القلم مكتملة؛ التطبيق القابل للاستخدام لم يُبنَ بعد.**
+> الحالة العامة: **أساس المحرك وإدخال القلم وهندسة الضربة ونظام البلاطات CPU-side موجودة؛ تطبيق Android وRenderer الإنتاجي لم يُبنيا بعد.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -134,7 +134,8 @@
 
 - `Cargo.toml`: تعريف workspace والتبعيات والإصدارات المشتركة.
 - `crates/engine-core/`: أساس الرياضيات والوقت والتحويلات والتنعيم.
-- `crates/engine-ink/`: عينات القلم وتوليد dabs.
+- `crates/engine-ink/`: عينات القلم وتوليد dabs وهندسة الضربة المتصلة وحدود mesh.
+- `crates/engine-tiles/`: تغطية البلاطات وتتبع البلاطات المتضررة على CPU.
 - `crates/renderer-tileink/`: محول Tileink التجريبي ومثال WGPU.
 - `docs/architecture/FOUNDATION.md`: وثيقة التصميم والأساس الرياضي والمعماري.
 - `docs/architecture/RENDERER_SPIKE.md`: تقييم Tileink وحدود اعتماده.
@@ -143,7 +144,8 @@
 ### ما يمكن فعله حاليًا
 
 - استخدام مكتبة core للحسابات والتحويلات والتوقيت الموجودين.
-- إرسال عينات Stroke صالحة إلى `tessellate_stroke()` والحصول على dabs.
+- إرسال عينات Stroke صالحة إلى `tessellate_stroke()` والحصول على dabs، ثم بناء `StrokeMesh` والحصول على `StrokeBounds`.
+- حساب تغطية مستطيل عبر `TileGrid` وتجميع البلاطات المتضررة في `DirtyTileSet` مع حدود موارد.
 - تحويل dabs إلى Tileink Canvas في النموذج المكتبي التجريبي.
 - تشغيل اختبارات workspace وفحوص التنسيق وClippy.
 
@@ -153,7 +155,7 @@
 - إدخال قلم Android متصل بالمحرك.
 - Renderer يعمل على Android Surface.
 - ضربة فرشاة متصلة بجودة إنتاجية.
-- إدارة tiles وdirty regions وcache على مستوى المستند.
+- دمج dirty regions المتجاورة أو invalidation graph للطبقات والتحويلات أو GPU tile cache.
 - طبقات وصيغة ملفات وحفظ تلقائي وundo/redo.
 - Timeline أو onion skin أو تشغيل رسوم.
 - Stage ثلاثي الأبعاد أو Keyframes.
@@ -187,30 +189,36 @@
 
 **القيود المتبقية:** لا توجد حواف anti-alias fringe، ولا CPU reference raster/compositor، كما أن محول Tileink لا يزال يحول كل dab إلى SDF circle بدل استهلاك `StrokeMesh`. هذه الأعمال لم تُنفذ ضمن Issue #8.
 
-### المرحلة 4: نظام البلاطات والمناطق المتضررة — قيد التنفيذ في [Issue #11](https://github.com/PanDuroDev/test/issues/11)
+### المرحلة 4: أساس نظام البلاطات والمناطق المتضررة — مكتمل عبر [PR #12](https://github.com/PanDuroDev/test/pull/12)
 
-**الهدف:** إنشاء أساس CPU-side لإدارة tiles وdirty regions قبل ربطه بكاش GPU.
+- Issue: [#11](https://github.com/PanDuroDev/test/issues/11) — مغلق.
+- PR: [#12](https://github.com/PanDuroDev/test/pull/12) — مدمج.
+- فرع التنفيذ: `render/tile-grid-dirty-tracking`.
+- رأس PR قبل الدمج: `e65c7f315de443f673628e38bf382a549958b7e9`.
+- التزام الدمج على `main`: `e3cafa2aa1bf6997c34892f6be85d04ac58ded2c`.
+- [تشغيل CI](https://github.com/PanDuroDev/test/actions/runs/41239022031).
 
-**التنفيذ الحالي على الفرع `render/tile-grid-dirty-tracking`:**
+**ما أُنجز:**
 
 - إضافة crate مستقلة `rasm-engine-tiles` دون اعتماد على Tileink أو WGPU.
 - تمثيل `DocumentRect` بحدود half-open `[min, max)` بوحدات document raster pixels.
-- تمثيل tile coordinates بإحداثيات signed حتى تعمل المساحات السالبة بصورة صحيحة.
+- تمثيل `TileCoord` بإحداثيات signed حتى تعمل المساحات السالبة بصورة صحيحة.
 - تحويل المستطيلات إلى `TileCoverage` مضغوط، مع iterator row-major deterministic دون إنشاء قائمة tiles مسبقًا.
-- دعم margin expansion للفرشاة وحواف raster المستقبلية.
+- دعم توسيع المستطيل بهامش finite non-negative.
 - إضافة `DirtyTileSet` بحد أقصى configurable، وإدراج idempotent وترتيب ثابت.
 - جعل عملية marking transactional: عند تجاوز حد المجموعة لا يحدث إدراج جزئي.
 - رفض الإحداثيات غير المنتهية وخارج مجال i64، والمستطيلات المعكوسة، والهوامش غير الصالحة، ومناطق التغطية الكبيرة.
 
-**ما لم يُنفذ بعد:** لا يوجد دمج لمستطيلات dirty المتجاورة، ولا invalidation graph للطبقات أو التحويلات، ولا GPU texture cache، ولا benchmark يحدد حجم البلاطة الإنتاجي. حجم البلاطة يمرر كإعداد ولا نفترض أن 64 هو الحجم الأمثل.
+**التحقق الفعلي قبل الدمج:**
 
-**معايير القبول:**
+- Ubuntu: **59 اختبارًا ناجحًا** (14 core + 22 ink + 19 tiles + 4 renderer).
+- macOS: **59 اختبارًا ناجحًا**.
+- Windows: **59 اختبارًا ناجحًا**.
+- `cargo fmt --all -- --check` و`cargo clippy --workspace --all-targets -- -D warnings` ناجحان.
 
-- تغطية صحيحة عند الحدود الموجبة والسالبة وعند max boundary الحصري.
-- عدم تجاوز ميزانية coverage أو dirty-set وعدم ترك حالة جزئية عند الخطأ.
-- اختبارات حدودية وموارد وترتيب deterministic.
-- CI أخضر على Linux وWindows وmacOS، مع format وClippy.
-- توثيق واضح لما لم يُختبر على GPU أو Android.
+**الحدود المتبقية وليست جزءًا من Issue #11:** لا يوجد دمج لمستطيلات dirty المتجاورة، ولا invalidation graph للطبقات أو التحويلات، ولا GPU texture cache، ولا benchmark يحدد حجم البلاطة الإنتاجي. حجم البلاطة يمرر كإعداد ولا نفترض أن 64 هو الحجم الأمثل. لا يثبت CI أن أي Renderer يعمل على GPU فعلي أو Android.
+
+**المتابعة:** [Issue #13](https://github.com/PanDuroDev/test/issues/13) يضيف مصدرًا موحدًا لحدود هندسة الضربة كي يستطيع المستهلك تحويلها إلى مستطيل invalidation دون إعادة حساب bounds. هذا امتداد تكاملي مستقل ولا يغيّر حقيقة أن أساس tile grid وdirty tracking في Issue #11 مكتمل.
 
 ### المرحلة 5: إثبات مسار Android والقلم وGPU
 
@@ -383,7 +391,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند سجل هذا التحديث، المرحلة 3 قيد المراجعة في PR #10؛ بعد حسمها ابدأ بأول مرحلة غير مكتملة في الخطة أو Issue أحدث يغير الأولوية لسبب موثق.
+6. عند آخر تحديث، المرحلة 4 الأساسية مدمجة عبر PR #12، وIssue #13 مفتوح لإضافة bounds إلى StrokeMesh. بعده، ابدأ إثبات Android Surface والقلم وGPU وفق معايير المرحلة 5، ولا تدّع نجاح تشغيل Android قبل اختباره على جهاز فعلي.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -396,3 +404,5 @@ target/renderer-spike.png
 - 2026-10-31: PR #9 أُغلق بعد إعادة تأسيس الفرع فوق main المحدث، واستُبدل بـ PR #10 لتجنب تضمين تغيير التوثيق المدمج مرة ثانية.
 - 2026-10-31: دمج المرحلة 3 عبر PR #10 بالالتزام `b40141d4257f00d250e5b0f26a825cc8dc4ddd36` بعد نجاح 40 اختبارًا على كل نظام وفحوص format وClippy.
 - 2026-10-31: بدء المرحلة 4 عبر Issue #11؛ إنشاء `rasm-engine-tiles` وإضافة grid coverage وtransactional dirty tile set على فرع منفصل.
+- 2026-10-31: إكمال أساس المرحلة 4 ودمج PR #12 بالالتزام `e3cafa2aa1bf6997c34892f6be85d04ac58ded2c` بعد نجاح 59 اختبارًا على كل من Linux وWindows وmacOS، ونجاح format وClippy.
+- 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
