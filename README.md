@@ -48,3 +48,5 @@ cargo test --workspace
 ## Current status
 
 The first milestone establishes exact timeline time, reversible canvas/screen transforms, adaptive pointer filtering, and CI. The actual renderer and app shell are deliberately deferred until these contracts are tested.
+
+Pull requests are validated by GitHub Actions on Linux, Windows, and macOS before merge.
