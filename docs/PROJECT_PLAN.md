@@ -66,7 +66,6 @@
 
 ### المرحلة 1: أساس المحرك والرياضيات وCI
 
-<badge-placeholder />
 
 - Issue: [#1](https://github.com/PanDuroDev/test/issues/1)
 - PR: [#2](https://github.com/PanDuroDev/test/pull/2) — مدمج.
