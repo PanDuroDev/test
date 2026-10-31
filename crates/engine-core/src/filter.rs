@@ -72,11 +72,8 @@ impl OneEuroFilter {
 
         let raw_derivative = (sample - previous_raw) / delta_seconds;
         let derivative_alpha = smoothing_alpha(self.derivative_cutoff_hz, delta_seconds);
-        let filtered_derivative = low_pass(
-            raw_derivative,
-            self.previous_derivative,
-            derivative_alpha,
-        );
+        let filtered_derivative =
+            low_pass(raw_derivative, self.previous_derivative, derivative_alpha);
 
         let cutoff = self.min_cutoff_hz + self.beta * filtered_derivative.abs();
         let signal_alpha = smoothing_alpha(cutoff, delta_seconds);
@@ -129,7 +126,10 @@ mod tests {
 
         let output_range = output.iter().copied().fold(f64::NEG_INFINITY, f64::max)
             - output.iter().copied().fold(f64::INFINITY, f64::min);
-        assert!(output_range < 0.2, "expected jitter to be strongly attenuated, got range {output_range}");
+        assert!(
+            output_range < 0.2,
+            "expected jitter to be strongly attenuated, got range {output_range}"
+        );
     }
 
     #[test]
@@ -174,6 +174,9 @@ mod tests {
 
         let mut filter = OneEuroFilter::new(1.0, 0.0, 1.0).expect("valid filter");
         assert_eq!(filter.filter(1.0, 0.0), Err(FilterError::InvalidDeltaTime));
-        assert_eq!(filter.filter(f64::NAN, 0.01), Err(FilterError::NonFiniteSample));
+        assert_eq!(
+            filter.filter(f64::NAN, 0.01),
+            Err(FilterError::NonFiniteSample)
+        );
     }
 }
