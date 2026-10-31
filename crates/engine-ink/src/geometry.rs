@@ -450,7 +450,7 @@ mod tests {
         let input = dabs(&[
             (0.0, 0.0, 1.0),
             (20.0, 0.0, 1.0),
-            (10.0, 5.773_502_691_9, 1.0),
+            (10.0, 0.1, 1.0),
         ]);
         let config = StrokeGeometryConfig::new(2.0, 8, 10_000).expect("valid config");
         let mesh = tessellate_stroke_mesh(&input, config).expect("bounded mesh");
@@ -459,15 +459,15 @@ mod tests {
             .position(|dab| dab.position().distance(DVec2::new(20.0, 0.0)) < 1.0e-9)
             .expect("the corner dab is preserved");
         let center = input[corner_index].position();
-        let maximum = input[corner_index].radius() * config.max_miter_ratio() + 1.0e-9;
+        let expected_miter_limit = input[corner_index].radius() * config.max_miter_ratio();
         let section_start = corner_index * 2;
         let section_vertices = &mesh.vertices()[section_start..section_start + 2];
 
-        assert!(
-            section_vertices
-                .iter()
-                .all(|vertex| vertex.position().distance(center) <= maximum)
-        );
+        assert!(section_vertices.iter().all(|vertex| {
+            let distance = vertex.position().distance(center);
+            distance <= expected_miter_limit + 1.0e-9
+                && (distance - expected_miter_limit).abs() < 1.0e-6
+        }));
         assert_mesh_indices_are_valid(&mesh);
     }
 
