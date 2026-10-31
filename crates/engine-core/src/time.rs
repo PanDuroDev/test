@@ -61,8 +61,7 @@ impl FrameRate {
     /// Returns the frame that contains time_ns (floor semantics).
     pub fn nanoseconds_to_frame_floor(self, time_ns: u64) -> Option<u64> {
         let scaled = u128::from(time_ns).checked_mul(u128::from(self.numerator))?;
-        let denominator = 1_000_000_000_u128
-            .checked_mul(u128::from(self.denominator))?;
+        let denominator = 1_000_000_000_u128.checked_mul(u128::from(self.denominator))?;
         u64::try_from(scaled / denominator).ok()
     }
 }
@@ -98,8 +97,14 @@ mod tests {
     fn integer_rates_land_on_exact_second_boundaries() {
         for fps in [24, 30, 60] {
             let rate = FrameRate::new(fps, 1).expect("valid frame rate");
-            assert_eq!(rate.frame_to_nanoseconds(u64::from(fps)), Some(1_000_000_000));
-            assert_eq!(rate.nanoseconds_to_frame_floor(1_000_000_000), Some(u64::from(fps)));
+            assert_eq!(
+                rate.frame_to_nanoseconds(u64::from(fps)),
+                Some(1_000_000_000)
+            );
+            assert_eq!(
+                rate.nanoseconds_to_frame_floor(1_000_000_000),
+                Some(u64::from(fps))
+            );
         }
     }
 
@@ -107,7 +112,10 @@ mod tests {
     fn fractional_rate_is_derived_from_absolute_frame_index() {
         let rate = FrameRate::new(24_000, 1_001).expect("valid frame rate");
         assert_eq!(rate.frame_to_nanoseconds(24_000), Some(1_001_000_000_000));
-        assert_eq!(rate.nanoseconds_to_frame_floor(1_001_000_000_000), Some(24_000));
+        assert_eq!(
+            rate.nanoseconds_to_frame_floor(1_001_000_000_000),
+            Some(24_000)
+        );
     }
 
     #[test]
