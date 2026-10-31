@@ -4,10 +4,7 @@
 //! and renderer types remain inside the Rust workspace.
 
 use glam::DVec2;
-use rasm_engine_ink::{
-    BrushConfig, StrokeSample, StrokeError, StrokeGeometryError, tessellate_stroke,
-    tessellate_stroke_mesh,
-};
+use rasm_engine_ink::{BrushConfig, StrokeSample, tessellate_stroke, tessellate_stroke_mesh};
 use rasm_engine_tiles::{DocumentRect, TileCoord, TileError, TileGrid};
 
 uniffi::setup_scaffolding!();
