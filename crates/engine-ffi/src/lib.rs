@@ -137,10 +137,7 @@ pub fn preview_stroke(
         }
     })?;
 
-    let tiles = coverage
-        .iter()
-        .map(|TileCoord { .. }| unreachable!("TileCoord fields are private"))
-        .collect::<Vec<_>>();
+    let tiles = coverage.iter().map(tile_coordinate_output).collect();
 
     Ok(StrokePreviewOutput {
         bounds: StrokeBoundsOutput {
