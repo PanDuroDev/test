@@ -241,9 +241,22 @@
 - لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
 - تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
-### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — [Issue #17](https://github.com/PanDuroDev/test/issues/17)
+### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — قيد التنفيذ عبر [Issue #17](https://github.com/PanDuroDev/test/issues/17)
 
-**الهدف:** إنشاء أصغر نموذج مكتبي يثبت أن المحرك الحالي يمكن عرضه والتفاعل معه على Windows قبل بناء واجهة المنتج.
+**فرع التنفيذ:** `desktop/windows-renderer-prototype`.
+
+**ما أُضيف حتى الآن (لم يُثبت بعد عبر CI أو تشغيل Windows فعلي):**
+- crate مكتبي `apps/desktop-prototype` باستخدام `winit 0.30.13` و`wgpu 30.0.0`.
+- نافذة Desktop وسطح WGPU مع إدارة resize وLost/Outdated/Timeout/occluded surface states.
+- إعادة استخدام `engine-ink` لتوليد `StrokeMesh` وتحويله إلى vertex/index buffers ثم عرضه في سطح GPU.
+- مسار Windows hook عبر `EventLoopBuilderExtWindows::with_msg_hook` قبل تمرير رسالة Win32 إلى winit.
+- التقاط `WM_POINTERDOWN/UPDATE/UP`، واسترجاع العينات المدمجة عبر `GetPointerPenInfoHistory`، وتحويل ضغط القلم وميله ودورانه عند توفر masks.
+- fallback للرسم بالفأرة، وحدّ للـ history والـ GPU mesh upload لحماية الذاكرة.
+- خط اختبار ثابت يظهر عند فتح النافذة ليتحقق المستخدم بصريًا من مسار StrokeMesh حتى دون جهاز قلم.
+
+**ما لم يُثبت بعد:** لا يوجد تشغيل موثق على Windows أو GPU فعلي، ولا جهاز قلم اختُبر فعليًا. CI compile/test لم يكتمل بعد لهذه النسخة، ولا يوجد قياس latency أو ذاكرة بعد.
+
+**الهدف:** إثبات أصغر مسار مكتبي متكامل للمحرك قبل اعتماد إطار واجهة المنتج أو Renderer نهائي.
 
 **المهام:**
 - مقارنة خيارات نافذة/إدخال/واجهة مكتبية، مع إبقاء اختيار إطار UI مفتوحًا حتى ظهور نتائج الاختبار.
@@ -253,7 +266,7 @@
 - قياس input-to-visible latency، استهلاك الذاكرة، وإعادة إنشاء Surface وفقدان GPU context.
 - إبقاء Tileink adapter تجربة مقارنة فقط، وعدم اعتماده قبل اختبارات جودة وأداء فعلية.
 
-**معايير القبول:** نموذج يعمل على Windows فعليًا، يعرض stroke mesh على GPU، يثبت وصول بيانات pen/pointer، ويقدم قياسات قابلة للتكرار مع توثيق الجهاز والـ backend والقيود. لا يُدّعى دعم القلم أو GPU قبل الاختبار الفعلي.
+**المهام المتبقية ومعايير القبول:** بناء crate على CI لكل الأنظمة، معالجة أي أخطاء compile، تشغيل النموذج على Windows فعليًا، التحقق من عرض StrokeMesh على GPU وإدخال القلم على جهاز داعم، واختبار resize/minimize/restore. ثم قياس latency والذاكرة مع توثيق الجهاز والـ backend. لا يُدّعى دعم القلم أو GPU قبل الاختبار الفعلي.
 
 ### المرحلة 6: نموذج المستند والطبقات والتراجع
 
@@ -406,7 +419,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تابع PR #16 لتثبيت هذا الاتجاه، ثم نفّذ Issue #17 لبناء نموذج النافذة وwgpu وWindows pen input. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تم دمج PR #16 لتثبيت الاتجاه، ويجري تنفيذ Issue #17 على فرع `desktop/windows-renderer-prototype` لبناء نموذج النافذة وwgpu وWindows pen input. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -423,5 +436,6 @@ target/renderer-spike.png
 - 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
 - 2026-10-31: دمج PR #14 لإضافة جسر UniFFI DTO وبناء Android ARM64 وتوليد Kotlin bindings.
 - 2026-10-31: فتح PR #15 لإضافة Android FFI smoke host؛ البناء والتغليف نجحا، لكن Emulator لم يكمل الإقلاع في أول تشغيل CI. بقي PR مفتوحًا كتجربة تكامل مستقلة.
-- 2026-11-01: توثيق هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة، عبر PR #16 (مفتوح).
+- 2026-11-01: دمج PR #16 لتثبيت هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة.
+- 2026-11-01: بدء Issue #17 على فرع `desktop/windows-renderer-prototype`: إضافة نافذة winit، وWGPU surface، وعرض StrokeMesh، وربط Windows pen/pointer history. التنفيذ لم يُثبت بعد عبر CI أو تشغيل فعلي على Windows.
 - 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
