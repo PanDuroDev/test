@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rust-ci-\${{ github.workflow }}-\${{ github.ref }}
+  group: rust-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   tests:
-    name: Tests (\${{ matrix.os }})
+    name: Tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +41,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
-    runs-on: \${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7.0.1
