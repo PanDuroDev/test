@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/engine-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+glam = { version = "0.34.1", default-features = false, features = ["std", "float-types"] }
