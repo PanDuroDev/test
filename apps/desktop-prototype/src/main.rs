@@ -641,7 +641,7 @@ unsafe fn handle_windows_pointer_message(
     }
 
     let pointer_id = (message.wParam & 0xFFFF) as u32;
-    let mut pointer_type = 0_u32;
+    let mut pointer_type = 0_i32;
     if unsafe { GetPointerType(pointer_id, &mut pointer_type) } == 0 || pointer_type != PT_PEN {
         return false;
     }
