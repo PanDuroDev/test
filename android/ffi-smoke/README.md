@@ -5,6 +5,7 @@ This small Android app exists only to verify the Rust/Kotlin boundary at runtime
 ## Prerequisites
 
 - JDK 17
+- Android Gradle Plugin 9.3.1 (with built-in Kotlin support)
 - Gradle 9.5.0
 - Rust 1.87 or newer
 - Android SDK and NDK 28.2.13676358
