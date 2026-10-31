@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val repositoryRoot = rootProject.projectDir.resolve("../../..").canonicalFile
+val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
 val generatedFfiRoot = layout.buildDirectory.dir("generated/ffi").get().asFile
 val generatedJniLibs = generatedFfiRoot.resolve("jniLibs")
 val generatedKotlin = generatedFfiRoot.resolve("kotlin")
