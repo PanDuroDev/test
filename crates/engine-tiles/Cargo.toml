@@ -1,0 +1,10 @@
+[package]
+name = "rasm-engine-tiles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Platform-independent tile coverage and bounded dirty-tile tracking for Rasm Studio"
+
+[dependencies]
+glam.workspace = true
