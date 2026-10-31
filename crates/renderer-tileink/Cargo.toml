@@ -7,6 +7,7 @@ rust-version.workspace = true
 description = "Experimental desktop renderer adapter backed by Tileink"
 
 [dependencies]
+glam.workspace = true
 kurbo.workspace = true
 peniko.workspace = true
 rasm-engine-ink = { path = "../engine-ink" }
