@@ -4,7 +4,9 @@ members = [
     "crates/engine-core",
     "crates/engine-ink",
     "crates/engine-tiles",
+    "crates/engine-ffi",
     "crates/renderer-tileink",
+    "tools/uniffi-bindgen",
 ]
 
 [workspace.package]

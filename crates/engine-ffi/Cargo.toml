@@ -1,0 +1,16 @@
+[package]
+name = "rasm-engine-ffi"
+description = "Narrow UniFFI boundary for the Rasm Studio engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+glam.workspace = true
+rasm-engine-ink = { path = "../engine-ink" }
+rasm-engine-tiles = { path = "../engine-tiles" }
+uniffi = "=0.32.2"

@@ -29,6 +29,44 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  android-ffi:
+    name: Android ARM64 FFI build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: ''
+
+      - name: Install pinned Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build Android ARM64 shared library
+        run: cargo ndk -t arm64-v8a -P 23 -o target/jniLibs build --release -p rasm-engine-ffi
+
+      - name: Generate Kotlin bindings from Android library metadata
+        run: |
+          cargo run -p uniffi-bindgen -- generate \
+            --library target/jniLibs/arm64-v8a/librasm_engine_ffi.so \
+            --language kotlin \
+            --out-dir target/uniffi-kotlin
+          test -n "$(find target/uniffi-kotlin -type f -name '*.kt' -print -quit)"
+
   tests:
     name: Tests (${{ matrix.os }})
     strategy:
