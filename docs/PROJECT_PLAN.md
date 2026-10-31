@@ -233,8 +233,8 @@
 - PR: [#14](https://github.com/PanDuroDev/test/pull/14) — مدمج.
 - PR: [#15](https://github.com/PanDuroDev/test/pull/15) — مفتوح؛ يضيف Android smoke host ويختبر تحميل المكتبة واستدعاء Rust من Kotlin على x86_64 Emulator.
 - PR #14 أضاف `rasm-engine-ffi` باستخدام UniFFI 0.32.2، وDTOs عددية للعينات والحدود والبلاطات، وبناء Android ARM64 وتوليد Kotlin bindings.
-- PR #15 يبني APK ويحتوي على مكتبات ARM64 وx86_64. بناء APK وفحوص Rust نجحت في تشغيل CI #48، لكن Emulator لم يكمل الإقلاع، لذلك لم تبدأ instrumentation tests.
-- أضيف إلى فرع PR #15 تمكين KVM في GitHub Actions وتحسين مدخلات Gradle لتتبع ملفات workspace ومولد UniFFI؛ تشغيل CI #49 يعيد التحقق من ذلك.
+- PR #15 يبني APK ويحتوي على مكتبات ARM64 وx86_64. في تشغيل CI #49 نجح بناء APK، والتحقق من المكتبتين، وإقلاع Emulator بعد تفعيل KVM، وتشغيل **3 instrumentation tests بنجاح**.
+- أضيف تمكين KVM في GitHub Actions وتحسين مدخلات Gradle لتتبع ملفات workspace ومولد UniFFI؛ نجحت بعدها جميع فحوص Rust وFormat وClippy والاختبارات الثلاثة على Emulator في CI #49.
 
 **حدود التجربة:**
 - لا تثبت إدخال قلم فعلي أو عرض GPU أو وجود واجهة منتج.
