@@ -45,7 +45,7 @@ impl FrameRate {
         self.denominator
     }
 
-    /// Converts an absolute frame index to nanoseconds, rounding down to 1 ns.
+    /// Converts an absolute frame index to nanoseconds, rounding up to the first nanosecond at or after the frame boundary.
     ///
     /// The calculation uses integer arithmetic with a 128-bit intermediate.
     /// None indicates that the result cannot fit in a u64.
@@ -53,7 +53,9 @@ impl FrameRate {
         let scaled = u128::from(frame_index)
             .checked_mul(1_000_000_000)?
             .checked_mul(u128::from(self.denominator))?;
-        u64::try_from(scaled / u128::from(self.numerator)).ok()
+        let divisor = u128::from(self.numerator);
+        let rounded_up = scaled.checked_add(divisor - 1)? / divisor;
+        u64::try_from(rounded_up).ok()
     }
 
     /// Returns the frame that contains time_ns (floor semantics).
