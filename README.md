@@ -35,7 +35,7 @@ Tileink is an experimental desktop adapter, not the selected Android renderer. I
 ## Repository layout
 
 - `crates/engine-core`: platform-independent math and timeline contracts.
-- `crates/engine-ink`: validated stylus samples and distance-based pressure-aware brush dabs.
+- `crates/engine-ink`: validated stylus samples, pressure-aware brush dabs, and renderer-independent connected stroke mesh geometry.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
 - `docs/architecture/RENDERER_SPIKE.md`: Tileink evaluation and current platform limitations.
@@ -61,6 +61,6 @@ The example writes `target/renderer-spike.png`. GPU initialization is deliberate
 
 ## Current status
 
-The repository now has exact timeline time, reversible canvas/screen transforms, adaptive pointer smoothing, pressure-aware dab sampling, and an experimental GPU canvas adapter. The actual app shell, Android renderer, document model, persistent tiles, and animation editor are still future milestones.
+The repository now has exact timeline time, reversible canvas/screen transforms, adaptive pointer smoothing, pressure-aware dab sampling, connected stroke mesh geometry, and an experimental GPU canvas adapter. The actual app shell, Android renderer, document model, persistent tiles, and animation editor are still future milestones.
 
 Pull requests are validated by GitHub Actions on Linux, Windows, and macOS.
