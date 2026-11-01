@@ -305,14 +305,7 @@ impl InputState {
         Ok(())
     }
 
-    fn save_project(&mut self, mut path: PathBuf) -> Result<(), String> {
-        if !path
-            .extension()
-            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("rasm"))
-        {
-            path.set_extension("rasm");
-        }
-
+    fn save_project(&mut self, path: PathBuf) -> Result<(), String> {
         match rasm_engine_storage::save_atomic(&path, self.canvas.document()) {
             Ok(()) => {
                 self.current_path = Some(path.clone());
@@ -1014,6 +1007,18 @@ enum ProjectAction {
     SaveAs,
 }
 
+fn append_rasm_extension(mut path: PathBuf) -> PathBuf {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("rasm"))
+    {
+        let mut name = path.into_os_string();
+        name.push(".rasm");
+        path = PathBuf::from(name);
+    }
+    path
+}
+
 struct App {
     window: Option<Arc<Window>>,
     renderer: Option<GpuRenderer>,
@@ -1052,8 +1057,31 @@ impl App {
                 .set_file_name("Untitled.rasm")
                 .save_file(),
         };
-        let Some(path) = selected_path else {
+        let Some(selected_path) = selected_path else {
             return;
+        };
+
+        let path = match action {
+            ProjectAction::Open => selected_path,
+            ProjectAction::Save | ProjectAction::SaveAs => {
+                let normalized_path = append_rasm_extension(selected_path.clone());
+                // The native dialog confirmed the selected path, not a sibling path
+                // created by extension normalization. Confirm that exact destination.
+                if normalized_path != selected_path && normalized_path.exists() {
+                    let confirmed = rfd::MessageDialog::new()
+                        .set_title("Confirm overwrite")
+                        .set_description(format!(
+                            "The file already exists. Replace {}?",
+                            normalized_path.display()
+                        ))
+                        .set_buttons(rfd::MessageButtons::YesNo)
+                        .show();
+                    if !confirmed {
+                        return;
+                    }
+                }
+                normalized_path
+            }
         };
 
         let result = match action {
