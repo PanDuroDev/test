@@ -302,12 +302,26 @@ impl InputState {
         {
             path.set_extension("rasm");
         }
-        rasm_engine_storage::save_atomic(&path, self.canvas.document())
-            .map_err(|error| format!("Save failed: {error}"))?;
-        self.current_path = Some(path.clone());
-        self.status_message = Some(format!("Saved {}", path.display()));
-        self.title_dirty = true;
-        Ok(())
+
+        match rasm_engine_storage::save_atomic(&path, self.canvas.document()) {
+            Ok(()) => {
+                self.current_path = Some(path.clone());
+                self.status_message = Some(format!("Saved {}", path.display()));
+                self.title_dirty = true;
+                Ok(())
+            }
+            Err(rasm_engine_storage::FileStorageError::DirectorySyncAfterCommit(error)) => {
+                self.current_path = Some(path.clone());
+                let message = format!(
+                    "Saved {}, but syncing its directory failed: {error}",
+                    path.display()
+                );
+                self.status_message = Some(message.clone());
+                self.title_dirty = true;
+                Err(message)
+            }
+            Err(error) => Err(format!("Save failed: {error}")),
+        }
     }
 
     fn select_eraser(&mut self, eraser: bool) -> bool {
