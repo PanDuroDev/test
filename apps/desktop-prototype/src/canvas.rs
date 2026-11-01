@@ -376,6 +376,7 @@ impl Default for BrushSettings {
 }
 
 impl BrushSettings {
+    #[cfg(test)]
     pub const fn radius(self) -> f64 {
         self.radius
     }
@@ -389,6 +390,7 @@ impl BrushSettings {
         }
     }
 
+    #[cfg(test)]
     pub const fn is_eraser(self) -> bool {
         self.eraser
     }
