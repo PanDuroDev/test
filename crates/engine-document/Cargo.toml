@@ -8,3 +8,6 @@ description = "Platform-independent document, layer, stroke, and edit-history mo
 
 [dependencies]
 rasm-engine-ink = { path = "../engine-ink" }
+
+[dev-dependencies]
+glam.workspace = true
