@@ -607,26 +607,30 @@ where
     let (temp_path, mut temp_file) = create_temp_file(parent, file_name)
         .map_err(FileStorageError::Io)?;
 
-    let result = (|| {
+    let write_result = (|| {
         temp_file.write_all(bytes).map_err(FileStorageError::Io)?;
         temp_file.flush().map_err(FileStorageError::Io)?;
         temp_file.sync_all().map_err(FileStorageError::Io)?;
-        drop(temp_file);
-
-        replace(&temp_path, path).map_err(FileStorageError::Io)?;
-
-        #[cfg(unix)]
-        File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(FileStorageError::DirectorySyncAfterCommit)?;
-
         Ok(())
     })();
+    drop(temp_file);
 
-    if result.is_err() {
+    if let Err(error) = write_result {
         let _ = fs::remove_file(&temp_path);
+        return Err(error);
     }
-    result
+
+    if let Err(error) = replace(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(FileStorageError::Io(error));
+    }
+
+    #[cfg(unix)]
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(FileStorageError::DirectorySyncAfterCommit)?;
+
+    Ok(())
 }
 
 fn create_temp_file(parent: &Path, destination_name: &std::ffi::OsStr) -> io::Result<(PathBuf, File)> {
