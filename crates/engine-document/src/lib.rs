@@ -6,7 +6,6 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use glam::DVec2;
 use rasm_engine_ink::{BrushConfig, StrokeSample};
 
 /// Maximum UTF-8 byte length for a layer name.
@@ -385,8 +384,9 @@ impl Document {
                     if previous_timestamp.is_some_and(|previous| sample.timestamp_ns < previous) {
                         return Err(DocumentError::NonMonotonicStrokeTimestamps);
                     }
-                    let validated = StrokeSample::new(
-                        DVec2::new(sample.x, sample.y),
+                    let validated = StrokeSample::from_xy(
+                        sample.x,
+                        sample.y,
                         sample.pressure,
                         sample.timestamp_ns,
                     )
