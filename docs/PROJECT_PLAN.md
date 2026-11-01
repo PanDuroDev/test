@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية.** آخر تغيير مكتمل ومدمج هو PR #36، الذي أغلق Issue #32 وأضاف لوحة طبقات WGPU مع الإضافة والاختيار والإخفاء والحذف والتمرير وربط الرسم بالطبقة النشطة وUndo/Redo. نجحت وظائف CI الست في التشغيل [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، بما فيها Windows/Linux/macOS tests وFormat/Clippy وAndroid ARM64 FFI ورفع Windows prototype artifact (ID `13094053903`). لا يزال الموجود نموذج Desktop prototype وليس تطبيق المنتج أو Renderer إنتاجي. Issue #33 هو التالي: حوارات فتح/حفظ RASM، ويجب أن تشمل حفظ لون كل Stroke؛ اللون حاليًا مخزن في ذاكرة prototype فقط ولا يدخل في Document أو RASM v1، لذلك فتح/حفظ دون توسيع التمثيل سيفقد ألوان الرسم. لا يوجد Timeline أو Stage 2.5D أو autosave/crash recovery. لم تُثبت بعد قياسات latency/الذاكرة أو اختبار قلم فعلي حديث. Android/Kotlin FFI محفوظ كتجربة تكامل مستقلة وليس هدف المنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية.** آخر تغيير مدمج في `main` هو PR #36 لإدارة الطبقات. PR #37 على الفرع `desktop/project-file-workflow` ينفذ Issue #33: Ctrl+O / Ctrl+S / Ctrl+Shift+S، حوارات ملفات أصلية عبر `rfd 0.15.4`، واستخدام `engine-storage::load/save_atomic`. في هذا الفرع أصبحت ألوان RGBA جزءًا من `Document::Stroke` وسجل التراجع، وأصبح مخطط JSON في حاوية RASM v1 هو schema v2؛ يستمر decoder بقراءة schema v1 القديمة مع لون افتراضي. التغييرات لم تُدمج بعد، ويلزم نجاح وظائف CI الست بما فيها فحص MSRV Rust 1.87. لا يزال الموجود نموذج Desktop prototype وليس تطبيق المنتج أو Renderer إنتاجي. لا يوجد Timeline أو Stage 2.5D أو autosave/crash recovery. لم تُثبت بعد قياسات latency/الذاكرة أو اختبار قلم فعلي حديث. Android/Kotlin FFI محفوظ كتجربة تكامل مستقلة وليس هدف المنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -412,7 +412,35 @@
 
 **النتيجة والتحقق:** دُمج PR #36 في `main` بالالتزام `0bc503a4fe72f0549d4da2d907c3b453ed871c3f` وأُغلق Issue #32. نجحت وظائف CI الست في [التشغيل #41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، بما فيها Windows prototype artifact. هذا prototype UI وليس التصميم النهائي. لا توجد إعادة تسمية أو ترتيب بالسحب أو مجموعات أو تحكم opacity. Renderer لا يطبق opacity جزئية أو alpha compositing كاملًا، والممحاة ما زالت shortcut بلون الخلفية. لم يُختبر قلم فعلي أو benchmark.
 
-**التالي:** [Issue #33](https://github.com/PanDuroDev/test/issues/33) لربط حوارات Open/Save بواجهة التطبيق واستخدام `engine-storage` الموجود؛ لا تُعد تنفيذ codec أو atomic filesystem I/O.
+**الخطوة التالية:** [Issue #33](https://github.com/PanDuroDev/test/issues/33) قيد التنفيذ في [PR #37](https://github.com/PanDuroDev/test/pull/37)، على الفرع `desktop/project-file-workflow`. يحافظ العمل على `FILE_VERSION = 1` ويحدّث JSON schema إلى 2 لدعم ألوان الضربات، مع استمرار قراءة schema 1. لا تُعد تنفيذ codec أو atomic filesystem I/O.
+
+### المرحلة 7C: دورة ملفات Desktop وحفظ ألوان الضربات — PR #37 قيد المراجعة
+
+- Issue: [#33](https://github.com/PanDuroDev/test/issues/33).
+- PR: [#37](https://github.com/PanDuroDev/test/pull/37).
+- فرع التنفيذ: `desktop/project-file-workflow`.
+
+**نطاق التنفيذ في الفرع:**
+
+- `Ctrl+O` لفتح مشروع و`Ctrl+S` للحفظ و`Ctrl+Shift+S` للحفظ باسم، باستخدام حوارات أصلية مربوطة بالنافذة.
+- استخدام `rasm-engine-storage::load` و`save_atomic` دون إعادة تنفيذ IO الذري.
+- يظهر المسار الحالي في عنوان النافذة، وتظهر رسائل الفتح/الحفظ وأخطاء CRC/الإصدار/الحجم في شريط حالة مرئي.
+- لا يستبدل فتح الملف المستند الحالي إلا بعد اكتمال decode والتحقق؛ وعند النجاح تُمسح History القديمة وذاكرة هندسة الضربات وتُلغى عينات الإدخال القديمة.
+- اللون RGBA أصبح قيمة موثقة ومتحققًا منها داخل `Document::Stroke` و`StrokeSnapshot`، وتدخل في `Edit::add_stroke_with_color` وUndo/Redo.
+- بقيت حاوية الملف الثنائية `FILE_VERSION = 1`، بينما ارتفع JSON `SCHEMA_VERSION` إلى 2 لإضافة اللون. يقرأ decoder schema 1 القديمة ويعطي ضرباتها اللون الافتراضي السابق.
+- ثُبت `rfd = 0.15.4` مع فحص إضافي لـ`cargo +1.87 check -p rasm-desktop-prototype --all-targets` ضمن وظيفة الجودة، للحفاظ على MSRV المشروع.
+
+**الاختبارات المضافة:**
+
+- صلاحية قيم RGBA (رفض NaN والقيم خارج [0, 1]).
+- حفظ اللون داخل Document snapshot واستعادته، مع Undo/Redo.
+- RASM schema 2 round-trip بألوان مختلفة.
+- قبول schema 1 عند غياب حقل اللون وإسناد اللون الافتراضي.
+- filesystem save/load يعيد مستندًا يتضمن ضربة ذات لون غير افتراضي.
+- هندسة شريط الحالة وفهارسه.
+- استبدال المستند يمسح History ويعيد ملاءمة viewport.
+
+**الحدود:** PR ما زال مفتوحًا ولم تُثبت وظائف CI الست على الفرع بعد. لا يوجد autosave أو journaling أو crash recovery أو سجل ملفات حديثة. لا يوجد اختبار تفاعلي فعلي لحوارات النظام على جهاز Windows/macOS/Linux في CI؛ البناء لا يغني عن smoke test بشري. لا تُسجل المرحلة مكتملة قبل اجتياز CI والدمج.
 
 ### المرحلة 8: تحريك Frame-by-frame
 
@@ -520,7 +548,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. الحالة الحالية: PR #36 مدمج في `main` (merge commit `0bc503a4fe72f0549d4da2d907c3b453ed871c3f`) وأغلق Issue #32. أصبح نموذج Windows Desktop يحتوي winit/WGPU وDocument/Layer/Stroke وHistory وviewport pan/zoom وأدوات الفرش ولوحة طبقات تتيح الإضافة والاختيار والإخفاء والحذف وربط الرسم بالطبقة النشطة. نجحت وظائف CI الست في [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، ومنها Windows artifact `rasm-desktop-prototype-windows-x64`. Issue #33 هو الخطوة التالية لفتح/حفظ RASM؛ أُبلغت الملاحظة أن ألوان الضربات غير مخزنة بعد في Document/RASM v1 ويجب أن يشمل العمل حفظها دون فقد. لا يوجد Renderer إنتاجي أو Timeline أو Stage 2.5D أو crash recovery، ولم تُثبت قياسات latency/ذاكرة أو تجربة قلم فعلي حديثة. تجربة Android/Kotlin FFI محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
+6. الحالة الحالية: PR #36 مدمج في `main` (merge commit `0bc503a4fe72f0549d4da2d907c3b453ed871c3f`) وأغلق Issue #32. نموذج Windows Desktop يحتوي winit/WGPU وDocument/Layer/Stroke وHistory وviewport pan/zoom وأدوات الفرش ولوحة الطبقات. PR #37 مفتوح على الفرع `desktop/project-file-workflow` لإكمال Issue #33: حوارات Open/Save الأصلية، حفظ الألوان داخل Document، وتحديث RASM JSON schema إلى 2 مع التوافق مع schema 1. افحص CI قبل اعتبار العمل في `main`؛ تمت إضافة فحص MSRV Rust 1.87 إلى وظيفة الجودة. لا يوجد Renderer إنتاجي أو Timeline أو Stage 2.5D أو crash recovery، ولم تُثبت قياسات latency/ذاكرة أو تجربة قلم فعلي حديثة. تجربة Android/Kotlin FFI محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -559,3 +587,5 @@ target/renderer-spike.png
 - 2026-11-01: فتح PR #36 على الفرع `desktop/layers-panel` لإكمال Issue #32. أضيفت لوحة طبقات WGPU مستقلة عن أطر UI ثقيلة، وأوامر CanvasDocument لعمليات الطبقات عبر History، وربط رسم الماوس بالطبقة المحددة، واختبارات headless للتفاعل والتراجع والإعادة. PR ما زال مفتوحًا؛ لا تسجل المرحلة مكتملة قبل نجاح وظائف CI الست والدمج. Issue #33 هو العمل التالي لربط فتح/حفظ RASM بواجهة Desktop.
 
 - 2026-11-01: دُمج PR #36 بالـSquash في `main` (commit `0bc503a4fe72f0549d4da2d907c3b453ed871c3f`) وأُغلق Issue #32. نجحت وظائف CI الست في [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، ونجح بناء ورفع `rasm-desktop-prototype-windows-x64` (artifact ID `13094053903`). العمل التالي Issue #33. قبل ربط الحفظ/الفتح يجب جعل لون كل Stroke جزءًا محفوظًا؛ حاليًا الألوان موجودة فقط في `HashMap` داخل prototype ولا يحفظها RASM v1.
+
+- 2026-11-01: بدأ تنفيذ Issue #33 على الفرع `desktop/project-file-workflow` وفتح PR #37. أضيفت حوارات Open/Save عبر rfd 0.15.4، وربط `engine-storage::load/save_atomic`، وعنوان بمسار الملف وشريط حالة مرئي. نُقلت ألوان الضربات إلى Document/Stroke وUndo/Redo، وارتفع JSON schema إلى 2 مع قراءة schema 1 القديمة بلون افتراضي. أضيف فحص MSRV Rust 1.87 إلى CI. لا تعد المرحلة مكتملة قبل وظائف CI الست والدمج.
