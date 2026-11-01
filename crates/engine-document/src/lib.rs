@@ -40,6 +40,41 @@ impl LayerId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StrokeId(u64);
 
+/// Normalized RGBA colour stored with each editable stroke.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrokeColor {
+    rgba: [f32; 4],
+}
+
+impl StrokeColor {
+    /// Default colour used by new strokes and legacy RASM files without colour data.
+    pub const DEFAULT: Self = Self {
+        rgba: [0.10, 0.78, 0.92, 1.0],
+    };
+
+    /// Creates a colour with finite, normalized RGBA channels.
+    pub fn new(rgba: [f32; 4]) -> Result<Self, DocumentError> {
+        if rgba
+            .iter()
+            .all(|channel| channel.is_finite() && (0.0..=1.0).contains(channel))
+        {
+            Ok(Self { rgba })
+        } else {
+            Err(DocumentError::InvalidStrokeColor)
+        }
+    }
+
+    pub const fn rgba(self) -> [f32; 4] {
+        self.rgba
+    }
+}
+
+impl Default for StrokeColor {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 impl StrokeId {
     pub const fn get(self) -> u64 {
         self.0
@@ -56,6 +91,7 @@ pub enum DocumentError {
     InvalidLayerIndex,
     CannotRemoveLastLayer,
     InvalidOpacity,
+    InvalidStrokeColor,
     EmptyStroke,
     TooManyStrokeSamples,
     NonMonotonicStrokeTimestamps,
@@ -86,6 +122,7 @@ impl fmt::Display for DocumentError {
             Self::InvalidLayerIndex => "layer insertion or destination index is out of range",
             Self::CannotRemoveLastLayer => "a document must contain at least one layer",
             Self::InvalidOpacity => "layer opacity must be finite and within [0, 1]",
+            Self::InvalidStrokeColor => "stroke colour channels must be finite and within [0, 1]",
             Self::EmptyStroke => "a stroke must contain at least one input sample",
             Self::TooManyStrokeSamples => "stroke exceeds the configured sample limit",
             Self::NonMonotonicStrokeTimestamps => "stroke timestamps must be monotonic",
@@ -153,6 +190,7 @@ pub struct Stroke {
     id: StrokeId,
     samples: Vec<StrokeSample>,
     brush: BrushConfig,
+    color: StrokeColor,
 }
 
 impl Stroke {
@@ -166,6 +204,10 @@ impl Stroke {
 
     pub const fn brush(&self) -> BrushConfig {
         self.brush
+    }
+
+    pub const fn color(&self) -> StrokeColor {
+        self.color
     }
 }
 
@@ -266,6 +308,7 @@ impl Document {
                         .iter()
                         .map(|stroke| StrokeSnapshot {
                             id: stroke.id.get(),
+                            color: stroke.color.rgba(),
                             brush: BrushSnapshot {
                                 base_radius: stroke.brush.base_radius(),
                                 minimum_pressure_ratio: stroke.brush.minimum_pressure_ratio(),
@@ -369,6 +412,7 @@ impl Document {
                     return Err(DocumentError::TooManyTotalStrokeSamples);
                 }
 
+                let color = StrokeColor::new(stroke.color)?;
                 let brush = BrushConfig::new(
                     stroke.brush.base_radius,
                     stroke.brush.minimum_pressure_ratio,
@@ -399,6 +443,7 @@ impl Document {
                     id: StrokeId(stroke.id),
                     samples,
                     brush,
+                    color,
                 });
             }
 
@@ -454,6 +499,7 @@ pub struct LayerSnapshot {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrokeSnapshot {
     pub id: u64,
+    pub color: [f32; 4],
     pub brush: BrushSnapshot,
     pub samples: Vec<StrokeSampleSnapshot>,
 }
@@ -527,12 +573,23 @@ impl Edit {
         Self(Operation::MoveLayer { id, to_index })
     }
 
-    /// Appends a stroke to a layer while preserving its original input data.
+    /// Appends a stroke using the legacy default colour.
     pub fn add_stroke(layer_id: LayerId, samples: Vec<StrokeSample>, brush: BrushConfig) -> Self {
+        Self::add_stroke_with_color(layer_id, samples, brush, StrokeColor::DEFAULT)
+    }
+
+    /// Appends a stroke with an explicit, validated colour.
+    pub fn add_stroke_with_color(
+        layer_id: LayerId,
+        samples: Vec<StrokeSample>,
+        brush: BrushConfig,
+        color: StrokeColor,
+    ) -> Self {
         Self(Operation::AddStroke {
             layer_id,
             samples,
             brush,
+            color,
         })
     }
 
@@ -700,6 +757,7 @@ enum Operation {
         layer_id: LayerId,
         samples: Vec<StrokeSample>,
         brush: BrushConfig,
+        color: StrokeColor,
     },
     RemoveStroke {
         layer_id: LayerId,
@@ -901,6 +959,7 @@ impl Operation {
                 layer_id,
                 samples,
                 brush,
+                color,
             } => {
                 if samples.is_empty() {
                     return Err((
@@ -908,6 +967,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::EmptyStroke,
                     ));
@@ -918,6 +978,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::TooManyStrokeSamples,
                     ));
@@ -931,6 +992,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::NonMonotonicStrokeTimestamps,
                     ));
@@ -941,6 +1003,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::LayerNotFound,
                     ));
@@ -952,6 +1015,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::TooManyStrokes,
                     ));
@@ -966,6 +1030,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::TooManyTotalStrokeSamples,
                     ));
@@ -976,6 +1041,7 @@ impl Operation {
                             layer_id,
                             samples,
                             brush,
+                            color,
                         },
                         DocumentError::IdentifierExhausted,
                     ));
@@ -985,7 +1051,12 @@ impl Operation {
                 document.next_stroke_id = next_id;
                 document.layers[layer_index]
                     .strokes
-                    .push(Stroke { id, samples, brush });
+                    .push(Stroke {
+                        id,
+                        samples,
+                        brush,
+                        color,
+                    });
                 Ok((
                     Self::RemoveStroke {
                         layer_id,
@@ -1176,6 +1247,70 @@ mod tests {
         history.redo(&mut document).expect("redo add layer");
         assert_eq!(document.layers().len(), 2);
         assert_eq!(document.layers()[1].id(), added_id);
+    }
+
+    #[test]
+    fn stroke_colour_is_validated_and_survives_snapshot_and_history() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        let colour = StrokeColor::new([0.2, 0.35, 0.7, 0.85]).expect("valid colour");
+        let samples = vec![sample(10.0, 20.0, Some(0.5), 1)];
+
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke_with_color(
+                    layer_id,
+                    samples,
+                    BrushConfig::default(),
+                    colour,
+                ),
+            )
+            .expect("add coloured stroke");
+
+        assert_eq!(document.layers()[0].strokes()[0].color(), colour);
+        let snapshot = document.snapshot();
+        assert_eq!(snapshot.layers[0].strokes[0].color, [0.2, 0.35, 0.7, 0.85]);
+        let restored = Document::from_snapshot(snapshot).expect("restore colour snapshot");
+        assert_eq!(restored.layers()[0].strokes()[0].color(), colour);
+
+        history.undo(&mut document).expect("undo coloured stroke");
+        assert!(document.layers()[0].strokes().is_empty());
+        history.redo(&mut document).expect("redo coloured stroke");
+        assert_eq!(document.layers()[0].strokes()[0].color(), colour);
+    }
+
+    #[test]
+    fn invalid_stroke_colour_channels_are_rejected() {
+        assert_eq!(
+            StrokeColor::new([0.0, f32::NAN, 0.0, 1.0]),
+            Err(DocumentError::InvalidStrokeColor)
+        );
+        assert_eq!(
+            StrokeColor::new([0.0, 0.0, 1.1, 1.0]),
+            Err(DocumentError::InvalidStrokeColor)
+        );
+
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(1.0, 1.0, None, 1)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add default-colour stroke");
+        let mut snapshot = document.snapshot();
+        snapshot.layers[0].strokes[0].color[0] = f32::INFINITY;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidStrokeColor)
+        );
     }
 
     #[test]
