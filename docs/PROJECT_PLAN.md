@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 أكد نموذج النافذة والعرض على Windows يدويًا. PR #20 مدمج: نموذج Document/Layer/Stroke وUndo/Redo. PR #22 مدمج بالالتزام `52e9e118bc826862c1a8e76449c7aa59c8acec55`: snapshots متحققة وصيغة RASM v1 مع JSON schema version وCRC32. CI #41257206578 نجح في الوظائف الست على Linux وWindows وmacOS وFormat وClippy وبناء Android FFI وWindows prototype artifact. لا يوجد حتى الآن واجهة رسم منتجية أو Renderer إنتاجي أو Timeline. يجري تنفيذ Issue #25 لإضافة save/load ذري على filesystem؛ لا ندّعي اكتمال الحفظ حتى نجاح اختبارات الاستبدال على Windows. لا ندّعي اختبار قلم مخصص أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 أثبت نموذج النافذة والعرض على Windows، وPR #20 أضاف Document/Layer/Stroke وUndo/Redo، وPR #22 أضاف snapshots المتحققة وصيغة RASM v1. اكتملت المرحلة 6B2 في PR #26: filesystem save/load مع atomic replacement؛ CI #41258015343 نجح في الوظائف الست، بما فيها اختبارات Windows وLinux وmacOS وFormat وClippy وAndroid FFI وWindows prototype artifact. لا يوجد حتى الآن تطبيق رسم متكامل أو Renderer إنتاجي أو Timeline. لم يُختبر قلم مخصص أو تُسجل قياسات latency/ذاكرة. Android/Kotlin FFI محفوظ كتجربة مستقلة وليس هدف المنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -297,22 +297,29 @@
 
 **حدود المرحلة:** codec يتعامل مع byte buffers فقط. لا يوجد filesystem I/O أو حفظ ذري أو autosave أو journal أو crash recovery. CRC32 يكشف التلف العرضي ولا يوفر حماية تشفيرية ضد التلاعب المتعمد.
 
-### المرحلة 6B2: القراءة والكتابة الذرية لملفات RASM — قيد التنفيذ عبر [Issue #25](https://github.com/PanDuroDev/test/issues/25)
+### المرحلة 6B2: القراءة والكتابة الذرية لملفات RASM — مكتملة عبر [Issue #25](https://github.com/PanDuroDev/test/issues/25) و[PR #26](https://github.com/PanDuroDev/test/pull/26)
 
 **فرع التنفيذ:** `storage/atomic-file-save-load`.
+**رأس PR:** `cd9c6b9ca4485f622215c8324d2134d9bae0cfeb`.
+**CI:** [#41258015343](https://github.com/PanDuroDev/test/actions/runs/41258015343) — نجحت الوظائف الست، بما فيها اختبارات Windows وLinux وmacOS وFormat وClippy وAndroid ARM64 FFI وWindows prototype artifact.
 
-**النطاق الجاري:**
-- `save_atomic(path, document)` و`load(path)` فوق codec v1.
-- رفض الملفات الأكبر من الحد قبل قراءتها، مع إعادة التحقق من الحجم أثناء القراءة.
-- إنشاء temporary file فريد في مجلد الوجهة نفسه باستخدام `create_new`.
-- كتابة كاملة ثم flush وsync للملف قبل commit.
-- Windows: استبدال الملف عبر `MoveFileExW` مع replace-existing وwrite-through.
-- Unix: `rename` ذري داخل filesystem نفسه، ثم sync لمجلد الوجهة.
-- اختبار فشل commit بحقن الخطأ للتأكد من بقاء النسخة السابقة وحذف الملف المؤقت.
+**ما أُنجز:**
+- إضافة `save_atomic(path, document)` و`load(path)` إلى `rasm-engine-storage`.
+- التحقق من حجم الملف عبر metadata قبل القراءة، ثم فرض حد فعلي أثناء القراءة لمنع تجاوز الحد عند تغير الملف.
+- إنشاء ملف مؤقت فريد في مجلد الوجهة نفسه عبر `create_new` لمنع التصادم أو الكتابة فوق ملف مؤقت قائم.
+- كتابة المحتوى كاملًا ثم flush و`sync_all` قبل بدء الاستبدال.
+- Windows: استبدال عبر `MoveFileExW` باستخدام `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`.
+- Unix: `rename` داخل filesystem نفسه، ثم مزامنة مجلد الوجهة بعد commit.
+- حذف الملف المؤقت عند فشل الكتابة أو الاستبدال قبل commit، مع اختبار يثبت بقاء bytes النسخة السابقة.
+- اختبارات round-trip وreplace وملف تالف وفشل commit وتنظيف temp file.
 
-**التحفظات:** نجاح rename/replace يضمن ذرية الظهور وفق سلوك filesystem المستخدم، لكنه لا يمثل وعدًا مطلقًا ضد فقد الطاقة أو عيوب التخزين. فشل directory sync بعد commit يعني أن الملف الجديد قد أصبح ظاهرًا بالفعل، لذلك يجب إظهار هذه الحالة كخطأ بعد commit لا كأن الحفظ لم يحدث.
+**التحفظات والحدود:**
+- نجاح replace/rename يضمن ذرية الظهور وفق سلوك filesystem المستخدم، لكنه ليس ضمانًا مطلقًا ضد كل فقد للطاقة أو عيوب التخزين.
+- فشل directory sync على Unix بعد rename يُبلغ كخطأ `DirectorySyncAfterCommit`؛ قد يكون الملف الجديد أصبح ظاهرًا بالفعل ولا يصح افتراض بقاء القديم.
+- لا تشمل المرحلة autosave أو journaling أو crash recovery أو تكامل الواجهة.
+- Artifact `rasm-desktop-prototype-windows-x64` أُنتج بنجاح في CI، لكن ذلك لا يثبت تشغيل نسخة EXE الجديدة يدويًا على جهاز المستخدم.
 
-**التحقق المطلوب:** اختبارات save/load وreplace وfailed commit وtemp cleanup، ثم CI كامل على Linux/Windows/macOS وFormat وClippy. لا تعتبر المرحلة مكتملة قبل فحص نتائج Windows تحديدًا.
+**النتيجة:** أساس حفظ وفتح ملفات RASM موجود الآن في المحرك؛ المرحلة التالية هي بناء مسار Canvas Desktop قابل للاستخدام وربطه بالمستند والحفظ، لا إعادة تنفيذ codec أو filesystem I/O.
 
 ### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
@@ -444,7 +451,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، PR #18 وPR #20 مدمجان، وIssue #17 و#19 مغلقان. نموذج المستند وسجل Undo/Redo وsnapshot import/export موجود في main. PR #22 مدمج وIssue #21 مغلق؛ صيغة RASM v1 وsnapshot API موجودان في main. يجري تنفيذ Issue #25 على فرع `storage/atomic-file-save-load` لإضافة filesystem save/load ذري؛ لا تخلط بين codec bytes والحفظ الفعلي. تجربة FFI Android عبر PR #14/#15 محفوظة وليست هدف المنتج. لا تحذفها أو تجعلها شرطًا للمنتج.
+6. الحالة الحالية: PR #18 و#20 و#22 و#26 مدمجة؛ Windows prototype، نموذج المستند وUndo/Redo، snapshots وRASM v1، وfilesystem save/load الذري موجودة في main. Issue #25 أُغلق بواسطة PR #26. لا يزال التطبيق الكامل وواجهة الرسم الإنتاجية وRenderer الإنتاجي وTimeline غير موجودة. قلم Windows المخصص وقياسات الأداء لم تُثبت. تجربة Android/Kotlin FFI عبر PR #14/#15 محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -473,3 +480,4 @@ target/renderer-spike.png
 
 - 2026-11-01: دمج PR #22 بالالتزام `52e9e118bc826862c1a8e76449c7aa59c8acec55` وإغلاق Issue #21. نجحت وظائف CI الست في التشغيل #41257206578؛ أصبحت snapshots المتحققة وصيغة RASM v1 متاحتين في main.
 - 2026-11-01: فتح Issue #25 وبدء فرع `storage/atomic-file-save-load` لتنفيذ save/load ذري باستخدام temporary file في مجلد الوجهة، مع اختبارات حماية الملف السابق عند فشل commit.
+- 2026-11-01: اكتمل تنفيذ المرحلة 6B2 عبر PR #26: `save_atomic` و`load` مع الاستبدال الذري على Windows وUnix، وحدود قراءة صارمة واختبارات فشل commit وتنظيف الملفات المؤقتة. نجحت الوظائف الست في CI #41258015343، وأُنتج Windows prototype artifact. لم يُثبت تشغيل EXE الجديد يدويًا، ولا يشمل هذا العمل autosave أو journal أو crash recovery.
