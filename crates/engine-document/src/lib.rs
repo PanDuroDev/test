@@ -399,6 +399,7 @@ fn validate_layer_name(name: &str) -> Result<(), DocumentError> {
     Ok(())
 }
 
+#[derive(Debug)]
 enum Operation {
     AddLayer {
         name: String,
