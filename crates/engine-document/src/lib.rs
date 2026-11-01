@@ -900,7 +900,12 @@ mod tests {
 
         history.undo(&mut document).expect("undo move");
         assert_eq!(
-            document.layers().iter().map(Layer::id).map(LayerId::get).collect::<Vec<_>>(),
+            document
+                .layers()
+                .iter()
+                .map(Layer::id)
+                .map(LayerId::get)
+                .collect::<Vec<_>>(),
             vec![first.get(), second.get(), third.get()]
         );
     }
@@ -1165,7 +1170,10 @@ mod tests {
 
         let mut document = document();
         let mut history = History::default();
-        assert_eq!(history.undo(&mut document), Err(DocumentError::NothingToUndo));
+        assert_eq!(
+            history.undo(&mut document),
+            Err(DocumentError::NothingToUndo)
+        );
         assert_eq!(
             history.redo(&mut document),
             Err(DocumentError::NothingToRedo)
