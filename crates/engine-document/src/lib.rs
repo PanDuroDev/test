@@ -260,11 +260,7 @@ impl Edit {
     }
 
     /// Appends a stroke to a layer while preserving its original input data.
-    pub fn add_stroke(
-        layer_id: LayerId,
-        samples: Vec<StrokeSample>,
-        brush: BrushConfig,
-    ) -> Self {
+    pub fn add_stroke(layer_id: LayerId, samples: Vec<StrokeSample>, brush: BrushConfig) -> Self {
         Self(Operation::AddStroke {
             layer_id,
             samples,
@@ -450,10 +446,7 @@ enum Operation {
 impl Operation {
     /// On failure, returns ownership of the original operation so callers can
     /// restore it to the stack without cloning stroke payloads.
-    fn apply(
-        self,
-        document: &mut Document,
-    ) -> Result<(Self, EditResult), (Self, DocumentError)> {
+    fn apply(self, document: &mut Document) -> Result<(Self, EditResult), (Self, DocumentError)> {
         match self {
             Self::AddLayer { name, index } => {
                 if let Err(error) = validate_layer_name(&name) {
@@ -541,13 +534,7 @@ impl Operation {
                     return Err((Self::RenameLayer { id, name }, DocumentError::LayerNotFound));
                 };
                 let old_name = std::mem::replace(&mut layer.name, name);
-                Ok((
-                    Self::RenameLayer {
-                        id,
-                        name: old_name,
-                    },
-                    EditResult::None,
-                ))
+                Ok((Self::RenameLayer { id, name: old_name }, EditResult::None))
             }
             Self::SetLayerVisibility { id, visible } => {
                 let Some(layer) = document.layers.iter_mut().find(|layer| layer.id == id) else {
@@ -756,9 +743,7 @@ impl Operation {
                 }
 
                 let stroke_id = stroke.id;
-                document.layers[layer_index]
-                    .strokes
-                    .insert(index, *stroke);
+                document.layers[layer_index].strokes.insert(index, *stroke);
                 Ok((
                     Self::RemoveStroke {
                         layer_id,
@@ -903,7 +888,12 @@ mod tests {
             .execute(&mut document, Edit::move_layer(first, 2))
             .expect("move layer");
         assert_eq!(
-            document.layers().iter().map(Layer::id).map(LayerId::get).collect::<Vec<_>>(),
+            document
+                .layers()
+                .iter()
+                .map(Layer::id)
+                .map(LayerId::get)
+                .collect::<Vec<_>>(),
             vec![second.get(), third.get(), first.get()]
         );
 
@@ -1023,21 +1013,19 @@ mod tests {
         let mut history = History::default();
         let layer_id = document.layers()[0].id();
 
-        let add = |x: f64, history: &mut History, document: &mut Document| {
-            match history
-                .execute(
-                    document,
-                    Edit::add_stroke(
-                        layer_id,
-                        vec![sample(x, 0.0, Some(1.0), x as u64)],
-                        BrushConfig::default(),
-                    ),
-                )
-                .expect("add stroke")
-            {
-                EditResult::StrokeAdded(id) => id,
-                result => panic!("unexpected result: {result:?}"),
-            }
+        let add = |x: f64, history: &mut History, document: &mut Document| match history
+            .execute(
+                document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(x, 0.0, Some(1.0), x as u64)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
         };
         let first = add(1.0, &mut history, &mut document);
         let second = add(2.0, &mut history, &mut document);
@@ -1142,7 +1130,10 @@ mod tests {
         history.undo(&mut document).expect("undo second");
         assert_eq!(document.layers().len(), 2);
         assert_eq!(document.layers()[1].name(), "First");
-        assert_eq!(history.undo(&mut document), Err(DocumentError::NothingToUndo));
+        assert_eq!(
+            history.undo(&mut document),
+            Err(DocumentError::NothingToUndo)
+        );
     }
 
     #[test]
@@ -1154,10 +1145,7 @@ mod tests {
         assert_eq!(history.redo_len(), 1);
 
         assert_eq!(
-            history.execute(
-                &mut document,
-                Edit::rename_layer(LayerId(999), "Missing"),
-            ),
+            history.execute(&mut document, Edit::rename_layer(LayerId(999), "Missing",)),
             Err(DocumentError::LayerNotFound)
         );
         assert_eq!(history.redo_len(), 1);
@@ -1177,7 +1165,10 @@ mod tests {
         let mut document = document();
         let mut history = History::default();
         assert_eq!(history.undo(&mut document), Err(DocumentError::NothingToUndo));
-        assert_eq!(history.redo(&mut document), Err(DocumentError::NothingToRedo));
+        assert_eq!(
+            history.redo(&mut document),
+            Err(DocumentError::NothingToRedo)
+        );
         assert_eq!(history.max_entries(), DEFAULT_HISTORY_LIMIT);
     }
 
