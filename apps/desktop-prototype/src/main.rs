@@ -247,15 +247,18 @@ impl InputState {
     }
 
     fn select_eraser(&mut self, eraser: bool) -> bool {
-        self.note_brush_change(self.brush.set_eraser(eraser))
+        let changed = self.brush.set_eraser(eraser);
+        self.note_brush_change(changed)
     }
 
     fn scale_brush(&mut self, factor: f64) -> bool {
-        self.note_brush_change(self.brush.scale_radius(factor))
+        let changed = self.brush.scale_radius(factor);
+        self.note_brush_change(changed)
     }
 
     fn select_color(&mut self, index: usize) -> bool {
-        self.note_brush_change(self.brush.select_color(index))
+        let changed = self.brush.select_color(index);
+        self.note_brush_change(changed)
     }
 
     fn note_brush_change(&mut self, changed: bool) -> bool {
