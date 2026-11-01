@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     mem::size_of,
+    path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
@@ -15,7 +16,7 @@ use canvas::{
     DOCUMENT_WIDTH,
 };
 use glam::DVec2;
-use rasm_engine_document::{Document, LayerId};
+use rasm_engine_document::{Document, LayerId, StrokeColor};
 use rasm_engine_ink::{
     BrushConfig, StrokeGeometryConfig, StrokeSample, tessellate_stroke, tessellate_stroke_mesh,
 };
@@ -62,9 +63,9 @@ struct InputState {
     cursor_position: Option<DVec2>,
     pan_anchor: Option<DVec2>,
     mouse_epoch: Option<Instant>,
-    last_error: Option<String>,
     brush: BrushSettings,
-    stroke_colors: HashMap<u64, [f32; 4]>,
+    current_path: Option<PathBuf>,
+    status_message: Option<String>,
     title_dirty: bool,
     active_layer_id: LayerId,
     panel_scroll: usize,
@@ -109,10 +110,6 @@ impl InputState {
             .expect("a document always contains one layer")
             .id();
         let brush = BrushSettings::default();
-        let mut stroke_colors = HashMap::new();
-        if let Some(id) = canvas.last_stroke_id() {
-            stroke_colors.insert(id, brush.color());
-        }
 
         Self {
             canvas,
@@ -122,9 +119,9 @@ impl InputState {
             cursor_position: None,
             pan_anchor: None,
             mouse_epoch: None,
-            last_error: None,
             brush,
-            stroke_colors,
+            current_path: None,
+            status_message: Some("Ready. Unsaved project.".to_owned()),
             title_dirty: true,
             active_layer_id,
             panel_scroll: 0,
@@ -237,21 +234,17 @@ impl InputState {
         if samples.is_empty() {
             return;
         }
-        let color = self.brush.color();
-        match self
-            .canvas
-            .commit_stroke_to(self.active_layer_id, samples, self.brush.brush())
-        {
-            Ok(Some(id)) => {
-                self.stroke_colors.insert(id, color);
-            }
-            Ok(None) => {}
-            Err(error) => self.last_error = Some(format!("stroke rejected: {error}")),
+        let color = StrokeColor::new(self.brush.color())
+            .expect("built-in brush colours use normalized RGBA channels");
+        match self.canvas.commit_stroke_to_with_color(
+            self.active_layer_id,
+            samples,
+            self.brush.brush(),
+            color,
+        ) {
+            Ok(Some(_)) | Ok(None) => {}
+            Err(error) => self.status_message = Some(format!("Stroke rejected: {error}")),
         }
-    }
-
-    fn take_error(&mut self) -> Option<String> {
-        self.last_error.take()
     }
 
     fn take_title_change(&mut self) -> bool {
@@ -259,15 +252,47 @@ impl InputState {
     }
 
     fn title(&self) -> String {
+        let project_path = self.current_path.as_ref().map_or_else(
+            || "Untitled".to_owned(),
+            |path| path.display().to_string(),
+        );
         let layer_name = self
             .canvas
             .document()
             .layer(self.active_layer_id)
             .map_or("No layer", |layer| layer.name());
         format!(
-            "Rasm Studio | {layer_name} | {} | wheel zoom, middle-drag pan, Ctrl+0 reset, B/E tools, [ ] size, 1-4 colour",
+            "Rasm Studio | {project_path} | {layer_name} | {}",
             self.brush.status()
         )
+    }
+
+    fn open_project(&mut self, path: PathBuf) -> Result<(), String> {
+        let document = rasm_engine_storage::load(&path)
+            .map_err(|error| format!("Open failed: {error}"))?;
+        let active_layer = document
+            .layers()
+            .last()
+            .map(|layer| layer.id())
+            .ok_or_else(|| "Open failed: project contains no layers".to_owned())?;
+
+        // Replace only after decoding and all document validation have succeeded.
+        self.canvas.replace_document(document);
+        self.active_layer_id = active_layer;
+        self.panel_scroll = 0;
+        self.current_path = Some(path.clone());
+        self.status_message = Some(format!("Opened {}", path.display()));
+        self.title_dirty = true;
+        Ok(())
+    }
+
+    fn save_project(&mut self, path: PathBuf) -> Result<(), String> {
+        rasm_engine_storage::save_atomic(&path, self.canvas.document())
+            .map_err(|error| format!("Save failed: {error}"))?;
+        self.current_path = Some(path.clone());
+        self.status_message = Some(format!("Saved {}", path.display()));
+        self.title_dirty = true;
+        Ok(())
     }
 
     fn select_eraser(&mut self, eraser: bool) -> bool {
@@ -315,7 +340,7 @@ impl InputState {
                 true
             }
             Err(error) => {
-                self.last_error = Some(format!("undo failed: {error}"));
+                self.status_message = Some(format!("Undo failed: {error}"));
                 false
             }
         }
@@ -331,7 +356,7 @@ impl InputState {
                 true
             }
             Err(error) => {
-                self.last_error = Some(format!("redo failed: {error}"));
+                self.status_message = Some(format!("Redo failed: {error}"));
                 false
             }
         }
@@ -389,7 +414,7 @@ impl InputState {
                             self.active_layer_id = id;
                             self.title_dirty = true;
                         }
-                        Err(error) => self.last_error = Some(format!("cannot add layer: {error}")),
+                        Err(error) => self.status_message = Some(format!("Cannot add layer: {error}")),
                     }
                 }
                 layer_panel::LayerPanelAction::Select(id) => {
@@ -408,7 +433,7 @@ impl InputState {
                         return true;
                     };
                     if let Err(error) = self.canvas.set_layer_visibility(id, visible) {
-                        self.last_error = Some(format!("cannot change layer visibility: {error}"));
+                        self.status_message = Some(format!("Cannot change layer visibility: {error}"));
                     }
                     self.title_dirty = true;
                 }
@@ -432,7 +457,7 @@ impl InputState {
                             self.title_dirty = true;
                         }
                         Err(error) => {
-                            self.last_error = Some(format!("cannot remove layer: {error}"));
+                            self.status_message = Some(format!("Cannot remove layer: {error}"));
                         }
                     }
                 }
@@ -542,6 +567,10 @@ struct CachedStroke {
 }
 
 impl GpuRenderer {
+    fn clear_document_cache(&mut self) {
+        self.stroke_cache.clear();
+    }
+
     async fn new(
         display: winit::event_loop::OwnedDisplayHandle,
         window: Arc<Window>,
@@ -723,14 +752,13 @@ impl GpuRenderer {
         document: &Document,
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
-        stroke_colors: &HashMap<u64, [f32; 4]>,
         layer_panel: LayerPanelView,
+        status_message: Option<&str>,
         viewport: CanvasViewport,
     ) -> (wgpu::Buffer, wgpu::Buffer, u32, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
         let mut indices = Vec::<u32>::new();
 
-        let fallback_color = BrushSettings::default().color();
         let mut visible_ids = Vec::new();
         for layer in document.layers() {
             if !layer.is_visible() || layer.opacity() <= 0.0 {
@@ -740,7 +768,7 @@ impl GpuRenderer {
                 let id = stroke.id().get();
                 visible_ids.push(id);
                 let cached = self.cached_stroke(id, stroke.samples(), stroke.brush());
-                let color = stroke_colors.get(&id).copied().unwrap_or(fallback_color);
+                let color = stroke.color().rgba();
                 Self::append_geometry(
                     &cached.positions,
                     &cached.indices,
@@ -766,6 +794,13 @@ impl GpuRenderer {
             self.config.width,
             self.config.height,
             layer_panel.scroll_offset,
+            &mut panel_vertices,
+            &mut panel_indices,
+        );
+        layer_panel::append_status_geometry(
+            status_message,
+            self.config.width,
+            self.config.height,
             &mut panel_vertices,
             &mut panel_indices,
         );
@@ -824,8 +859,8 @@ impl GpuRenderer {
         document: &Document,
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
-        stroke_colors: &HashMap<u64, [f32; 4]>,
         layer_panel: LayerPanelView,
+        status_message: Option<&str>,
         viewport: CanvasViewport,
     ) {
         if self.config.width == 0 || self.config.height == 0 {
@@ -930,6 +965,13 @@ impl GpuRenderer {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ProjectAction {
+    Open,
+    Save,
+    SaveAs,
+}
+
 struct App {
     window: Option<Arc<Window>>,
     renderer: Option<GpuRenderer>,
@@ -944,6 +986,47 @@ impl App {
             renderer: None,
             input,
             modifiers: ModifiersState::default(),
+        }
+    }
+
+    fn handle_project_action(&mut self, action: ProjectAction) {
+        let current_path = lock(&self.input).current_path.clone();
+        let selected_path = match action {
+            ProjectAction::Open => rfd::FileDialog::new()
+                .add_filter("Rasm project", &["rasm"])
+                .pick_file(),
+            ProjectAction::Save if current_path.is_some() => current_path,
+            ProjectAction::Save | ProjectAction::SaveAs => rfd::FileDialog::new()
+                .add_filter("Rasm project", &["rasm"])
+                .set_file_name("Untitled.rasm")
+                .save_file(),
+        };
+        let Some(path) = selected_path else {
+            return;
+        };
+
+        let result = match action {
+            ProjectAction::Open => {
+                let result = lock(&self.input).open_project(path);
+                if result.is_ok() {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_document_cache();
+                    }
+                }
+                result
+            }
+            ProjectAction::Save | ProjectAction::SaveAs => {
+                lock(&self.input).save_project(path)
+            }
+        };
+
+        if let Err(error) = result {
+            let mut input = lock(&self.input);
+            input.status_message = Some(error);
+            input.title_dirty = true;
+        }
+        if let Some(window) = &self.window {
+            window.request_redraw();
         }
     }
 }
@@ -1008,18 +1091,14 @@ impl ApplicationHandler<AppEvent> for App {
                         input.canvas.document(),
                         input.active_samples(),
                         input.brush,
-                        &input.stroke_colors,
                         LayerPanelView {
                             active_layer: input.active_layer_id,
                             scroll_offset: input.panel_scroll,
                         },
+                        input.status_message.as_deref(),
                         input.canvas.viewport(),
                     );
-                    if let Some(error) = input.take_error() {
-                        if let Some(window) = &window {
-                            window.set_title(&format!("Rasm Studio | {error}"));
-                        }
-                    } else if input.take_title_change() {
+                    if input.take_title_change() {
                         if let Some(window) = &window {
                             window.set_title(&input.title());
                         }
@@ -1108,6 +1187,19 @@ impl ApplicationHandler<AppEvent> for App {
                     && !event.repeat
                     && self.modifiers.control_key() =>
             {
+                let file_action = match event.physical_key {
+                    PhysicalKey::Code(KeyCode::KeyO) => Some(ProjectAction::Open),
+                    PhysicalKey::Code(KeyCode::KeyS) if self.modifiers.shift_key() => {
+                        Some(ProjectAction::SaveAs)
+                    }
+                    PhysicalKey::Code(KeyCode::KeyS) => Some(ProjectAction::Save),
+                    _ => None,
+                };
+                if let Some(action) = file_action {
+                    self.handle_project_action(action);
+                    return;
+                }
+
                 let changed = match event.physical_key {
                     PhysicalKey::Code(KeyCode::KeyZ) if self.modifiers.shift_key() => {
                         lock(&self.input).redo()
