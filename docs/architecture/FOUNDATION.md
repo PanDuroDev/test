@@ -348,3 +348,12 @@ C_o=C_s+C_d(1-\alpha_s)
 حد payload الحالي 256 MiB، ويُرفض الطول المعلن قبل محاولة فك JSON إذا تجاوز الحد. يجب أن يطابق طول الملف المعلن تمامًا؛ لا نقبل payload مبتورًا أو bytes زائدة. بعد تحقق checksum وschema تُمرر DTO إلى `Document::from_snapshot()`، ويُرفض أي خرق للـ invariants.
 
 **حدود v1:** لا يوجد ضغط أو chunked raster data أو assets أو file-system I/O أو atomic replace أو autosave أو recovery. codec يعالج bytes فقط؛ آلية كتابة/استبدال الملف وحماية النسخة السابقة ستنفذ منفصلة بعد ثبات صيغة البيانات. لا يعد CRC32 توقيعًا تشفيريًا أو حماية من التلاعب المتعمد؛ وظيفته كشف تلف payload العرضي.
+
+
+### 17. Filesystem save/load and atomic replacement
+
+The RASM codec is byte-buffer-only; filesystem access is layered above it in `rasm-engine-storage`. The current implementation under Issue #25 writes a unique temporary file in the destination directory, uses exclusive creation, writes and syncs the complete bytes, then commits by replacement. On Windows it uses `MoveFileExW` with replace-existing and write-through flags; on Unix it uses same-filesystem rename and syncs the parent directory after commit.
+
+A failed write or replacement before commit must leave the previous destination intact and remove the temporary file. A directory-sync failure after a successful Unix rename is a distinct post-commit error: the new file may already be visible and must not be described as an uncommitted save. These guarantees depend on filesystem and device behavior; they do not promise survival of every power-loss or hardware failure.
+
+The load path checks metadata length before allocation and bounds the actual read, then delegates byte validation to the RASM decoder. This is not autosave, journaling, or crash recovery.
