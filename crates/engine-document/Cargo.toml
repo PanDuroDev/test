@@ -7,7 +7,6 @@ rust-version.workspace = true
 description = "Platform-independent document, layer, stroke, and edit-history model for Rasm Studio"
 
 [dependencies]
-rasm-engine-ink = { path = "../engine-ink" }
-
-[dev-dependencies]
 glam.workspace = true
+rasm-engine-ink = { path = "../engine-ink" }
+serde.workspace = true
