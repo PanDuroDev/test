@@ -44,7 +44,13 @@ impl ViewState {
     }
 
     /// Zooms around a screen anchor so the document point under it stays fixed.
-    pub fn zoom_at(&mut self, factor: f64, anchor: DVec2, fit_origin: DVec2, fit_zoom: f64) -> bool {
+    pub fn zoom_at(
+        &mut self,
+        factor: f64,
+        anchor: DVec2,
+        fit_origin: DVec2,
+        fit_zoom: f64,
+    ) -> bool {
         if !factor.is_finite() || factor <= 0.0 || !fit_zoom.is_finite() || fit_zoom <= 0.0 {
             return false;
         }
@@ -335,7 +341,7 @@ impl CanvasDocument {
 
 #[cfg(test)]
 mod tests {
-    use super::{CanvasDocument, CanvasViewport, ViewState, DOCUMENT_HEIGHT, DOCUMENT_WIDTH};
+    use super::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH, ViewState};
     use glam::DVec2;
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
@@ -432,7 +438,10 @@ mod tests {
     fn zoom_keeps_the_document_point_under_the_cursor_fixed() {
         let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
         let document_point = DVec2::new(700.0, 350.0);
-        let anchor = canvas.viewport().transform().canvas_to_screen(document_point);
+        let anchor = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
 
         assert!(canvas.zoom_at(2.0, anchor));
         assert!((canvas.view().zoom() - 2.0).abs() < 1.0e-9);
@@ -462,10 +471,16 @@ mod tests {
     fn pan_shifts_the_screen_mapping_by_the_same_delta() {
         let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
         let document_point = DVec2::new(300.0, 400.0);
-        let before = canvas.viewport().transform().canvas_to_screen(document_point);
+        let before = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
         let delta = DVec2::new(35.0, -20.0);
         canvas.pan_by(delta);
-        let after = canvas.viewport().transform().canvas_to_screen(document_point);
+        let after = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
         assert!((after - before - delta).length() < 1.0e-8);
     }
 
@@ -488,9 +503,11 @@ mod tests {
         canvas.zoom_at(2.0, DVec2::new(480.0, 320.0));
         canvas.resize_viewport(1_600, 900);
         assert!((canvas.view().zoom() - 2.0).abs() < 1.0e-9);
-        assert!(canvas
-            .viewport()
-            .screen_to_document(DVec2::new(800.0, 450.0))
-            .is_some());
+        assert!(
+            canvas
+                .viewport()
+                .screen_to_document(DVec2::new(800.0, 450.0))
+                .is_some()
+        );
     }
 }
