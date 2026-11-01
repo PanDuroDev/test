@@ -65,6 +65,7 @@ pub enum DocumentError {
     DuplicateStrokeId,
     InvalidLayerId,
     InvalidStrokeId,
+    InvalidNextIdentifier,
     InvalidBrushConfig,
     InvalidStrokeSample,
     TooManyLayers,
@@ -94,6 +95,7 @@ impl fmt::Display for DocumentError {
             Self::DuplicateStrokeId => "the stroke identifier already exists in the document",
             Self::InvalidLayerId => "layer identifiers must be non-zero",
             Self::InvalidStrokeId => "stroke identifiers must be non-zero",
+            Self::InvalidNextIdentifier => "snapshot next identifier counters are invalid",
             Self::InvalidBrushConfig => "snapshot contains an invalid brush configuration",
             Self::InvalidStrokeSample => "snapshot contains an invalid stroke sample",
             Self::TooManyLayers => "document exceeds the configured layer limit",
@@ -250,6 +252,8 @@ impl Document {
         DocumentSnapshot {
             width_px: self.width_px,
             height_px: self.height_px,
+            next_layer_id: self.next_layer_id,
+            next_stroke_id: self.next_stroke_id,
             layers: self
                 .layers
                 .iter()
@@ -407,12 +411,20 @@ impl Document {
             });
         }
 
+        if snapshot.next_layer_id < next_layer_id
+            || snapshot.next_stroke_id < next_stroke_id
+            || snapshot.next_layer_id == 0
+            || snapshot.next_stroke_id == 0
+        {
+            return Err(DocumentError::InvalidNextIdentifier);
+        }
+
         Ok(Self {
             width_px: snapshot.width_px,
             height_px: snapshot.height_px,
             layers,
-            next_layer_id,
-            next_stroke_id,
+            next_layer_id: snapshot.next_layer_id,
+            next_stroke_id: snapshot.next_stroke_id,
         })
     }
 }
@@ -425,6 +437,8 @@ impl Document {
 pub struct DocumentSnapshot {
     pub width_px: u32,
     pub height_px: u32,
+    pub next_layer_id: u64,
+    pub next_stroke_id: u64,
     pub layers: Vec<LayerSnapshot>,
 }
 
