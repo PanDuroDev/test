@@ -194,7 +194,7 @@ C_o=C_s+C_d(1-\alpha_s)
 
 ### 5.5 حالة دمج Desktop الحالية
 
-الفرع `desktop/document-backed-canvas` ينفذ Issue #27، ويضيف طبقة حالة Desktop تستعمل نموذج المحرك بدل الاحتفاظ بالضربات المكتملة في مخزن مؤقت تابع للنافذة.
+ينفذ [PR #28](https://github.com/PanDuroDev/test/pull/28) Issue #27 على الفرع `desktop/document-backed-canvas`، ويضيف طبقة حالة Desktop تستعمل نموذج المحرك بدل الاحتفاظ بالضربات المكتملة في مخزن مؤقت تابع للنافذة. نجح [CI #41260460992](https://github.com/PanDuroDev/test/actions/runs/41260460992) في الوظائف الست بما فيها Windows/Linux/macOS وFormat/Clippy وAndroid FFI وبناء Windows prototype artifact. PR بانتظار الدمج.
 
 - `CanvasDocument` يملك `Document` و`History` و`CanvasViewport`. حجم المستند الابتدائي 1920×1080، بينما حجم نافذة العرض يتغير مستقلًا.
 - `CanvasViewport` يستخدم `ViewportTransform` لملاءمة المستند داخل مساحة النافذة مع الحفاظ على نسبة الأبعاد. المساحة المتبقية تصبح letterbox ولا تقبل بدء ضربة جديدة.
@@ -203,7 +203,7 @@ C_o=C_s+C_d(1-\alpha_s)
 - يقرأ renderer التجريبي الضربات المحفوظة من Document، وتنفذ اختصارات Ctrl+Z وCtrl+Y وCtrl+Shift+Z عمليات History.
 - تُقص عملية العرض إلى مستطيل اللوحة. إعادة بناء الهندسة ما زالت تحدث عند كل redraw، ولا توجد بعد raster tile cache أو partial GPU updates أو compositing صحيح لقيمة opacity لكل طبقة.
 
-هذا ليس UI مكتملًا: لا توجد لوحات أدوات أو واجهة إدارة طبقات أو dialogs للفتح والحفظ، ولا يثبت CI وحده عمل قلم فعلي أو قياسات latency. تبقى قرارات إطار UI والـ renderer الإنتاجي معلقة إلى حين اكتمال النموذج وقياسه على Windows.
+هذا ليس UI مكتملًا: لا توجد لوحات أدوات أو واجهة إدارة طبقات أو dialogs للفتح والحفظ، ولا يثبت CI وحده عمل قلم فعلي أو قياسات latency. تبقى قرارات إطار UI والـ renderer الإنتاجي معلقة إلى حين قياسه على Windows. نجاح CI يثبت البناء والاختبارات الآلية فقط، وليس تشغيل artifact على جهاز المستخدم أو صحة ضغط/ميل قلم فعلي.
 
 ## 6. نموذج التحريك
 
