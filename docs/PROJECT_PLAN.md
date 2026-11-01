@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. أساس Rust والفرش وهندسة الضربة والبلاطات موجود. PR #18 يضيف نموذج نافذة WGPU وإدخال Windows pen/pointer، واجتاز CI بالكامل على Linux وWindows وmacOS مع format وClippy وبناء Android FFI. اكتمل بناء EXE ورفعه كـ Artifact باسم `rasm-desktop-prototype-windows-x64` في تشغيل CI رقم #41253986206؛ التشغيل الفعلي على Windows وقلم/GPU حقيقي لم يُتحقق منه بعد. لا يوجد Document Model أو واجهة منتج أو Renderer إنتاجي بعد. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 مدمج، وست وظائف CI نجحت، والمستخدم أكد نجاح smoke test لتشغيل نسخة Windows وعرض StrokeMesh والرسم بالفأرة وتغيير/استعادة حجم النافذة. لا يوجد حتى الآن Renderer إنتاجي أو حفظ مستندات أو واجهة منتج متكاملة أو Timeline. يجري تنفيذ المرحلة 6A في Issue #19 على فرع `core/document-model-undo-redo` لإضافة نموذج Document/Layer/Stroke وسجل أوامر قابل للتراجع؛ لم يدمج بعد. لا ندّعي اختبار قلم فعلي أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -241,57 +241,63 @@
 - لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
 - تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
-### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — قيد التنفيذ عبر [Issue #17](https://github.com/PanDuroDev/test/issues/17)
+### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — مكتملة عبر [Issue #17](https://github.com/PanDuroDev/test/issues/17) و[PR #18](https://github.com/PanDuroDev/test/pull/18)
 
-**فرع التنفيذ:** `desktop/windows-renderer-prototype`.
+**الفرع:** `desktop/windows-renderer-prototype` — دُمج PR #18 في `main` بالالتزام `4dec1f49861949a37572f01d05f8dceaecfa2ec3`.
 
-**ما أُضيف في فرع التنفيذ (PR #18 ما زال Draft):**
-- crate مكتبي `apps/desktop-prototype` باستخدام `winit 0.30.13` و`wgpu 30.0.0`.
-- نافذة Desktop وسطح WGPU مع إدارة resize وLost/Outdated/Timeout/occluded surface states.
-- إعادة استخدام `engine-ink` لتوليد `StrokeMesh` وتحويله إلى vertex/index buffers ثم إرساله إلى مسار العرض.
-- مسار Windows hook عبر `EventLoopBuilderExtWindows::with_msg_hook` قبل تمرير رسالة Win32 إلى winit.
-- التقاط `WM_POINTERDOWN/UPDATE/UP`، واسترجاع العينات المدمجة عبر `GetPointerPenInfoHistory`، وتحويل ضغط القلم وميله ودورانه عند توفر masks.
-- fallback للرسم بالفأرة، وحدّ للـ history والـ GPU mesh upload لحماية الذاكرة.
-- خط اختبار ثابت يظهر عند فتح النافذة ليتحقق المستخدم بصريًا من مسار StrokeMesh حتى دون جهاز قلم.
+**ما أُنجز:**
+- نافذة Desktop وسطح WGPU باستخدام `winit 0.30.13` و`wgpu 30.0.0`.
+- إرسال `StrokeMesh` الحالي إلى مسار العرض باستخدام GPU vertex/index buffers.
+- تكامل Windows hook لرسائل `WM_POINTERDOWN/UPDATE/UP` وقراءة التاريخ عبر `GetPointerPenInfoHistory`، مع الضغط والميل والدوران عندما يوفرها النظام.
+- fallback للرسم بالفأرة، ومعالجة resize وفقدان/إعادة تهيئة Surface.
+- بناء EXE Release ورفعه كـ Artifact باسم `rasm-desktop-prototype-windows-x64`.
 
-**نتائج CI المثبتة:** [التشغيل #41252760860](https://github.com/PanDuroDev/test/actions/runs/41252760860) نجح في الوظائف الخمس: format وClippy، واختبارات workspace على Ubuntu وWindows وmacOS، وبناء Android ARM64 FFI وتوليد Kotlin bindings.
+**التحقق:**
+- [CI #41253986206](https://github.com/PanDuroDev/test/actions/runs/41253986206): نجحت الوظائف الست، بما فيها Windows Release artifact.
+- [CI #41254738784](https://github.com/PanDuroDev/test/actions/runs/41254738784): نجحت الوظائف الست على رأس PR النهائي.
+- المستخدم شغّل EXE على Windows وأكد نجاح اختبارات التشغيل المتاحة: ظهور النافذة والخط التجريبي، الرسم بالفأرة، وتغيير/استعادة النافذة.
+- تم تنزيل ZIP وفحص محتوياته وترويسة PE للملف التنفيذي.
 
-**خطوة التوزيع:** أُضيفت إلى workflow مهمة Windows تبني نسخة Release وتُرفق EXE مع تعليمات التشغيل باسم Artifact `rasm-desktop-prototype-windows-x64`. نجح التشغيل [#41253986206](https://github.com/PanDuroDev/test/actions/runs/41253986206) في الوظائف الست، وأنشأ Artifact باسم `rasm-desktop-prototype-windows-x64` يضم EXE وREADME، بحجم مضغوط يقارب 2.75 MB وصلاحية حتى 2026-11-14. تم تنزيل الحزمة وفحص محتويات ZIP والتأكد أن الملف EXE بصيغة Windows PE عبر ترويسة MZ؛ لم يتم تشغيله على Windows فعلي بعد.
+**حدود لا تزال قائمة:** لم يُجرَ اختبار قلم مخصص يثبت pressure/tilt، ولا توجد قياسات موثقة لـ input-to-visible latency أو CPU/GPU/memory. لا يعني نجاح النموذج اعتماد UI framework أو renderer إنتاجي. هذه البنود تبقى ضمن تقييم renderer/input اللاحق، ولا تمنع اعتماد إثبات النافذة والعرض الأساسي.
 
-**ما لم يُثبت بعد:** تشغيل التطبيق على Windows فعليًا، عرض السطح على GPU المستخدم، عمل قلم حقيقي عبر Windows Pointer APIs، resize/minimize/restore على جهاز فعلي، وقياس latency أو الذاكرة. نجاح CI يثبت البناء والاختبارات فقط ولا يثبت هذه الأمور.
+### المرحلة 6A: نموذج المستند والطبقات وسجل التعديلات — قيد التنفيذ عبر [Issue #19](https://github.com/PanDuroDev/test/issues/19)
 
-**الهدف:** إثبات أصغر مسار مكتبي متكامل للمحرك قبل اعتماد إطار واجهة المنتج أو Renderer نهائي.
+**فرع التنفيذ:** `core/document-model-undo-redo`.
 
-**المهام:**
-- مقارنة خيارات نافذة/إدخال/واجهة مكتبية، مع إبقاء اختيار إطار UI مفتوحًا حتى ظهور نتائج الاختبار.
-- اختبار Windows Pointer APIs لجمع موضع القلم والضغط والميل والعينات التاريخية عند توفرها.
-- إنشاء نافذة Windows وسطح wgpu وعرض `StrokeMesh` فعليًا.
-- فصل UI/input queue/engine worker/render thread/IO worker.
-- قياس input-to-visible latency، استهلاك الذاكرة، وإعادة إنشاء Surface وفقدان GPU context.
-- إبقاء Tileink adapter تجربة مقارنة فقط، وعدم اعتماده قبل اختبارات جودة وأداء فعلية.
+**النطاق المنفذ حاليًا على الفرع، ولم يعتمد بعد حتى انتهاء CI والمراجعة:**
+- crate مستقلة `rasm-engine-document` تعتمد على `engine-ink` فقط، ولا تعتمد على UI أو GPU أو Windows أو Tileink.
+- `Document` بأبعاد raster غير صفرية وطبقة ابتدائية واحدة.
+- `Layer` بمعرف ثابت واسم ورؤية وopacity وترتيب bottom-to-top.
+- `Stroke` يخزن عينات الإدخال الأصلية و`BrushConfig`، وليس `StrokeMesh` مشتقًا.
+- عمليات إضافة/حذف الطبقات، إعادة التسمية، الرؤية، opacity، وإعادة الترتيب.
+- عمليات إضافة/حذف الضربات مع حفظ معرفاتها ومواضعها عند Undo/Redo.
+- سجل أوامر عكسي محدود افتراضيًا إلى 256 عملية، مع حد أقصى مليون sample للضربة الواحدة.
+- فشل العملية يعيد الخطأ دون تغيير المستند أو undo/redo؛ أي تعديل ناجح جديد يمسح redo.
 
-**المهام المتبقية ومعايير القبول:** تنزيل EXE متاح الآن؛ الخطوة المتبقية تشغيله على Windows فعليًا، والتحقق من ظهور StrokeMesh على GPU وإدخال القلم على جهاز داعم، واختبار resize/minimize/restore. ثم قياس latency والذاكرة مع توثيق الجهاز والـ backend. لا يُدّعى دعم القلم أو GPU على مستوى المنتج قبل الاختبار الفعلي.
+**غير مشمول:** serialization، صيغة `.rasm`، save/load، autosave أو crash recovery. هذه بنود المرحلة 6B.
 
-### المرحلة 6: نموذج المستند والطبقات والتراجع
+**التحقق المطلوب:** CI على Linux/Windows/macOS، format وClippy، واختبارات invariants وإعادة تطبيق الأوامر. لا توصف المرحلة بأنها مكتملة قبل نجاح كل الفحوص.
 
-**الهدف:** تحويل نتائج الرسم إلى مستند قابل للتحرير والحفظ.
+### المرحلة 6B: صيغة المشروع والحفظ والاستعادة
+
+**الهدف:** إضافة طبقة تخزين موثوقة فوق نموذج المستند والأوامر الذي تنفذه المرحلة 6A.
 
 **المهام المقترحة:**
 
-- تعريف Document/Layer/Stroke/Brush resource IDs ونسخة schema.
-- فصل بيانات الضربة الأصلية عن raster cache المشتق.
-- تعريف عمليات تحرير transactional قابلة للتراجع والإعادة.
-- وضع سياسة undo/redo للبيانات الثقيلة (tile-level copy-on-write أو snapshots).
-- تصميم حزمة ملفات محلية تحتوي manifest وchunks للأصول والبلاطات.
-- حفظ ذري، journal أو recovery mechanism، وترحيل schema بين الإصدارات.
+- تعريف صيغة ملف ذات magic/header وschema version صريح مع قواعد رفض الإصدارات غير المدعومة.
+- تسلسل Document/Layer/Stroke/Brush settings مع الحفاظ على IDs وترتيب الطبقات والعينات الأصلية.
+- تصميم حزمة ملفات محلية تحتوي manifest وchunks للأصول والبلاطات عند دخول بيانات raster.
+- تنفيذ حفظ ذري إلى نفس filesystem، والتحقق من سلوك الاستبدال على Windows قبل اعتماد آلية commit.
+- journal أو recovery mechanism، واختبارات انقطاع/فشل الكتابة والترحيل بين schema versions.
 - دراسة استيراد/تصدير OpenRaster دون اعتباره صيغة المشروع الأصلية.
 
 **معايير القبول:**
 
-- إنشاء مستند وحفظه وإغلاقه وإعادة فتحه دون فقد.
-- round-trip tests لكل نوع بيانات مدعوم.
-- اختبارات تعطل/انقطاع أثناء الحفظ أو محاكاة فشل كتابة.
-- undo/redo يعيد الحالة المنطقية والبصرية الصحيحة.
+- حفظ مستند وإغلاقه وإعادة فتحه مع تطابق منطقي كامل للطبقات والضربات وإعدادات الفرشاة.
+- round-trip tests لكل نوع بيانات وإصدار schema مدعوم.
+- رفض الملف المبتور أو ذو magic/version أو بيانات غير صالحة دون تعديل المستند المفتوح.
+- atomic save واختبارات فشل الكتابة؛ لا يفسد الحفظ الجديد النسخة السابقة.
+- migration tests عند إضافة أي إصدار schema جديد.
 
 ### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
@@ -423,7 +429,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل. هدف المنتج الحالي PC-only مع Windows أولًا؛ PR #16 ثبّت الاتجاه، وPR #18 Draft على فرع `desktop/windows-renderer-prototype` ينفذ Issue #17. آخر CI (#41253986206) نجح في الوظائف الست، بما فيها بناء EXE ورفع Artifact Windows؛ يجب عدم إغلاق Issue #17 قبل اختبار الجهاز الفعلي. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، PR #18 مدمج وIssue #17 مغلق بعد smoke test Windows الذي أكده المستخدم. المراحل 1–4 موجودة على main، وتجربة FFI Android محفوظة عبر PR #14/#15. يجري تنفيذ Issue #19 على فرع `core/document-model-undo-redo` لإضافة نموذج المستند وسجل الأوامر؛ لا تبدأ صيغة الحفظ قبل تثبيت API هذا النموذج. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -445,3 +451,5 @@ target/renderer-spike.png
 - 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
 - 2026-11-01: اكتمل CI لـ PR #18، مع نجاح format وClippy واختبارات Linux/Windows/macOS وبناء Android ARM64 FFI في التشغيل #41252760860.
 - 2026-11-01: اكتمل تشغيل CI #41253986206 بنجاح في الوظائف الست. أُنشئ Artifact `rasm-desktop-prototype-windows-x64` (EXE + README) بحجم مضغوط 2.75 MB وصلاحية حتى 2026-11-14؛ تم تنزيل ZIP وفحص محتوياته وترويسة Windows PE، دون الادعاء بتشغيل EXE على جهاز Windows فعلي.
+- 2026-11-01: أكد المستخدم نجاح تشغيل Windows prototype والاختبارات الوظيفية المتاحة؛ دُمج PR #18 بالالتزام `4dec1f49861949a37572f01d05f8dceaecfa2ec3` وأُغلق Issue #17. لم تُسجل قياسات أداء أو تجربة قلم مخصص.
+- 2026-11-01: فُتح Issue #19 وبدأ فرع `core/document-model-undo-redo` لتنفيذ المرحلة 6A: Document/Layer/Stroke model وbounded command-based Undo/Redo؛ serialization والحفظ مؤجلان للمرحلة 6B.
