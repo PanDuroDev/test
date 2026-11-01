@@ -1,12 +1,13 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem::size_of,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
 
 mod canvas;
+mod layer_panel;
 
 use bytemuck::{Pod, Zeroable};
 use canvas::{
@@ -14,7 +15,7 @@ use canvas::{
     DOCUMENT_WIDTH,
 };
 use glam::DVec2;
-use rasm_engine_document::Document;
+use rasm_engine_document::{Document, LayerId};
 use rasm_engine_ink::{
     BrushConfig, StrokeGeometryConfig, StrokeSample, tessellate_stroke, tessellate_stroke_mesh,
 };
@@ -59,6 +60,8 @@ struct InputState {
     brush: BrushSettings,
     stroke_colors: HashMap<u64, [f32; 4]>,
     title_dirty: bool,
+    active_layer_id: LayerId,
+    panel_scroll: usize,
     #[cfg(target_os = "windows")]
     last_pen_axes: Option<PenAxes>,
 }
@@ -93,6 +96,12 @@ impl InputState {
             .commit_stroke(demo, BrushConfig::default())
             .expect("valid demo stroke");
         canvas.clear_history();
+        let active_layer_id = canvas
+            .document()
+            .layers()
+            .last()
+            .expect("a document always contains one layer")
+            .id();
         let brush = BrushSettings::default();
         let mut stroke_colors = HashMap::new();
         if let Some(id) = canvas.last_stroke_id() {
@@ -111,6 +120,8 @@ impl InputState {
             brush,
             stroke_colors,
             title_dirty: true,
+            active_layer_id,
+            panel_scroll: 0,
             #[cfg(target_os = "windows")]
             last_pen_axes: None,
         }
@@ -221,12 +232,14 @@ impl InputState {
             return;
         }
         let color = self.brush.color();
-        match self.canvas.commit_stroke(samples, self.brush.brush()) {
-            Ok(()) => {
-                if let Some(id) = self.canvas.last_stroke_id() {
-                    self.stroke_colors.insert(id, color);
-                }
+        match self
+            .canvas
+            .commit_stroke_to(self.active_layer_id, samples, self.brush.brush())
+        {
+            Ok(Some(id)) => {
+                self.stroke_colors.insert(id, color);
             }
+            Ok(None) => {}
             Err(error) => self.last_error = Some(format!("stroke rejected: {error}")),
         }
     }
@@ -240,8 +253,13 @@ impl InputState {
     }
 
     fn title(&self) -> String {
+        let layer_name = self
+            .canvas
+            .document()
+            .layer(self.active_layer_id)
+            .map_or("No layer", |layer| layer.name());
         format!(
-            "Rasm Studio | {} | wheel zoom, middle-drag pan, Ctrl+0 reset, B/E tools, [ ] size, 1-4 colour",
+            "Rasm Studio | {layer_name} | {} | wheel zoom, middle-drag pan, Ctrl+0 reset, B/E tools, [ ] size, 1-4 colour",
             self.brush.status()
         )
     }
@@ -286,9 +304,13 @@ impl InputState {
             return false;
         }
         match self.canvas.undo() {
-            Ok(()) => true,
+            Ok(()) => {
+                self.reconcile_active_layer();
+                self.prune_stroke_colors();
+                true
+            }
             Err(error) => {
-                eprintln!("[document] undo failed: {error}");
+                self.last_error = Some(format!("undo failed: {error}"));
                 false
             }
         }
@@ -299,12 +321,149 @@ impl InputState {
             return false;
         }
         match self.canvas.redo() {
-            Ok(()) => true,
+            Ok(()) => {
+                self.reconcile_active_layer();
+                self.prune_stroke_colors();
+                true
+            }
             Err(error) => {
-                eprintln!("[document] redo failed: {error}");
+                self.last_error = Some(format!("redo failed: {error}"));
                 false
             }
         }
+    }
+
+    fn reconcile_active_layer(&mut self) {
+        if self.canvas.document().layer(self.active_layer_id).is_none() {
+            if let Some(layer) = self.canvas.document().layers().last() {
+                self.active_layer_id = layer.id();
+                self.title_dirty = true;
+            }
+        }
+    }
+
+    fn prune_stroke_colors(&mut self) {
+        let retained = self
+            .canvas
+            .document()
+            .layers()
+            .iter()
+            .flat_map(|layer| layer.strokes())
+            .map(|stroke| stroke.id().get())
+            .collect::<HashSet<_>>();
+        self.stroke_colors.retain(|id, _| retained.contains(id));
+    }
+
+    fn pointer_over_layer_panel(&self, size: PhysicalSize<u32>) -> bool {
+        self.cursor_position.is_some_and(|position| {
+            layer_panel::contains(
+                position,
+                size.width,
+                size.height,
+                self.canvas.document(),
+                self.panel_scroll,
+            )
+        })
+    }
+
+    /// Handles a left click over the panel. Panel background clicks are consumed
+    /// too, so they never create accidental marks on the canvas underneath.
+    fn handle_layer_panel_click(&mut self, size: PhysicalSize<u32>) -> bool {
+        let Some(position) = self.cursor_position else {
+            return false;
+        };
+        if !layer_panel::contains(
+            position,
+            size.width,
+            size.height,
+            self.canvas.document(),
+            self.panel_scroll,
+        ) {
+            return false;
+        }
+
+        if let Some(action) = layer_panel::hit_test(
+            self.canvas.document(),
+            position,
+            size.width,
+            size.height,
+            self.panel_scroll,
+        ) {
+            match action {
+                layer_panel::LayerPanelAction::Add => {
+                    let name = format!("Layer {}", self.canvas.document().layers().len() + 1);
+                    match self.canvas.add_layer(name) {
+                        Ok(id) => {
+                            self.active_layer_id = id;
+                            self.title_dirty = true;
+                        }
+                        Err(error) => self.last_error = Some(format!("cannot add layer: {error}")),
+                    }
+                }
+                layer_panel::LayerPanelAction::Select(id) => {
+                    if self.canvas.document().layer(id).is_some() {
+                        self.active_layer_id = id;
+                        self.title_dirty = true;
+                    }
+                }
+                layer_panel::LayerPanelAction::ToggleVisibility(id) => {
+                    let Some(visible) = self
+                        .canvas
+                        .document()
+                        .layer(id)
+                        .map(|layer| !layer.is_visible())
+                    else {
+                        return true;
+                    };
+                    if let Err(error) = self.canvas.set_layer_visibility(id, visible) {
+                        self.last_error = Some(format!("cannot change layer visibility: {error}"));
+                    }
+                    self.title_dirty = true;
+                }
+                layer_panel::LayerPanelAction::Remove(id) => {
+                    let was_active = self.active_layer_id == id;
+                    let old_index = self
+                        .canvas
+                        .document()
+                        .layers()
+                        .iter()
+                        .position(|layer| layer.id() == id)
+                        .unwrap_or(0);
+                    match self.canvas.remove_layer(id) {
+                        Ok(()) => {
+                            if was_active {
+                                let layers = self.canvas.document().layers();
+                                let index = old_index.min(layers.len().saturating_sub(1));
+                                self.active_layer_id = layers[index].id();
+                            }
+                            self.prune_stroke_colors();
+                            self.reconcile_active_layer();
+                            self.title_dirty = true;
+                        }
+                        Err(error) => {
+                            self.last_error = Some(format!("cannot remove layer: {error}"));
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    fn scroll_layer_panel(&mut self, step: f64, screen_height: u32) -> bool {
+        if !step.is_finite() || step == 0.0 {
+            return false;
+        }
+        let max_scroll = layer_panel::max_scroll(self.canvas.document(), screen_height);
+        let amount = step.abs().ceil().clamp(1.0, 5.0) as usize;
+        let next = if step > 0.0 {
+            self.panel_scroll.saturating_sub(amount)
+        } else {
+            self.panel_scroll.saturating_add(amount).min(max_scroll)
+        };
+        let changed = next != self.panel_scroll;
+        self.panel_scroll = next;
+        changed
     }
 
     #[cfg(target_os = "windows")]
@@ -574,6 +733,8 @@ impl GpuRenderer {
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
         stroke_colors: &HashMap<u64, [f32; 4]>,
+        active_layer_id: LayerId,
+        panel_scroll: usize,
         viewport: CanvasViewport,
     ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
@@ -606,6 +767,35 @@ impl GpuRenderer {
             self.append_live_stroke(samples, brush, viewport, &mut vertices, &mut indices);
         }
 
+        let mut panel_vertices = Vec::new();
+        let mut panel_indices = Vec::new();
+        layer_panel::append_geometry(
+            document,
+            active_layer_id,
+            self.config.width,
+            self.config.height,
+            panel_scroll,
+            &mut panel_vertices,
+            &mut panel_indices,
+        );
+        if vertices.len().saturating_add(panel_vertices.len()) <= MAX_TOTAL_VERTICES
+            && vertices.len() <= (u32::MAX as usize).saturating_sub(panel_vertices.len())
+        {
+            let base = vertices.len() as u32;
+            let width = self.config.width.max(1) as f32;
+            let height = self.config.height.max(1) as f32;
+            for vertex in panel_vertices {
+                vertices.push(GpuVertex {
+                    position: [
+                        vertex.position[0] / width * 2.0 - 1.0,
+                        1.0 - vertex.position[1] / height * 2.0,
+                    ],
+                    color: vertex.color,
+                });
+            }
+            indices.extend(panel_indices.into_iter().map(|index| base + index));
+        }
+
         if vertices.is_empty() {
             vertices.push(GpuVertex::zeroed());
         }
@@ -636,6 +826,8 @@ impl GpuRenderer {
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
         stroke_colors: &HashMap<u64, [f32; 4]>,
+        active_layer_id: LayerId,
+        panel_scroll: usize,
         viewport: CanvasViewport,
     ) {
         if self.config.width == 0 || self.config.height == 0 {
@@ -671,7 +863,15 @@ impl GpuRenderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let (vertex_buffer, index_buffer, index_count) =
-            self.make_mesh_buffers(document, active_samples, brush, stroke_colors, viewport);
+            self.make_mesh_buffers(
+                document,
+                active_samples,
+                brush,
+                stroke_colors,
+                active_layer_id,
+                panel_scroll,
+                viewport,
+            );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -796,6 +996,8 @@ impl ApplicationHandler<AppEvent> for App {
                         input.active_samples(),
                         input.brush,
                         &input.stroke_colors,
+                        input.active_layer_id,
+                        input.panel_scroll,
                         input.canvas.viewport(),
                     );
                     if let Some(error) = input.take_error() {
@@ -822,7 +1024,15 @@ impl ApplicationHandler<AppEvent> for App {
             } => {
                 let mut input = lock(&self.input);
                 match state {
-                    ElementState::Pressed => input.begin_mouse(),
+                    ElementState::Pressed => {
+                        let size = self
+                            .window
+                            .as_ref()
+                            .map_or(PhysicalSize::new(0, 0), |window| window.inner_size());
+                        if !input.handle_layer_panel_click(size) {
+                            input.begin_mouse();
+                        }
+                    }
                     ElementState::Released => input.end_mouse(),
                 }
                 drop(input);
@@ -850,9 +1060,22 @@ impl ApplicationHandler<AppEvent> for App {
                     MouseScrollDelta::LineDelta(_, y) => f64::from(y),
                     MouseScrollDelta::PixelDelta(position) => position.y / 100.0,
                 };
-                if step != 0.0 && lock(&self.input).zoom_at_cursor(1.2_f64.powf(step)) {
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
+                if step != 0.0 {
+                    let size = self
+                        .window
+                        .as_ref()
+                        .map_or(PhysicalSize::new(0, 0), |window| window.inner_size());
+                    let mut input = lock(&self.input);
+                    let changed = if input.pointer_over_layer_panel(size) {
+                        input.scroll_layer_panel(step, size.height)
+                    } else {
+                        input.zoom_at_cursor(1.2_f64.powf(step))
+                    };
+                    drop(input);
+                    if changed {
+                        if let Some(window) = &self.window {
+                            window.request_redraw();
+                        }
                     }
                 }
             }
