@@ -5,8 +5,12 @@ use std::{
     time::Instant,
 };
 
+mod canvas;
+
 use bytemuck::{Pod, Zeroable};
+use canvas::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH};
 use glam::DVec2;
+use rasm_engine_document::Document;
 use rasm_engine_ink::{
     BrushConfig, StrokeGeometryConfig, StrokeSample, tessellate_stroke, tessellate_stroke_mesh,
 };
@@ -16,12 +20,12 @@ use winit::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
+    keyboard::{KeyCode, ModifiersState, PhysicalKey},
     window::{Window, WindowId},
 };
 
 const WINDOW_WIDTH: f64 = 960.0;
 const WINDOW_HEIGHT: f64 = 640.0;
-const MAX_COMPLETED_STROKES: usize = 128;
 const MAX_TOTAL_VERTICES: usize = 2_000_000;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -39,9 +43,8 @@ struct PenAxes {
     rotation: Option<u32>,
 }
 
-#[derive(Default)]
 struct InputState {
-    completed: Vec<Vec<StrokeSample>>,
+    canvas: CanvasDocument,
     active_pen_id: Option<u32>,
     active_pen_samples: Vec<StrokeSample>,
     active_mouse_samples: Option<Vec<StrokeSample>>,
@@ -53,7 +56,8 @@ struct InputState {
 
 impl InputState {
     fn with_demo_stroke(width: f64, height: f64) -> Self {
-        let mut state = Self::default();
+        let mut canvas =
+            CanvasDocument::new(width as u32, height as u32).expect("valid initial desktop canvas");
         let points = [
             (0.18, 0.58, 0.18_f32, 0_u64),
             (0.28, 0.43, 0.36, 4_000_000),
@@ -62,20 +66,63 @@ impl InputState {
             (0.70, 0.42, 0.58, 16_000_000),
             (0.82, 0.57, 0.30, 20_000_000),
         ];
-
         let demo = points
             .into_iter()
             .filter_map(|(x, y, pressure, timestamp)| {
-                StrokeSample::new(DVec2::new(width * x, height * y), Some(pressure), timestamp).ok()
+                StrokeSample::new(
+                    DVec2::new(
+                        f64::from(DOCUMENT_WIDTH) * x,
+                        f64::from(DOCUMENT_HEIGHT) * y,
+                    ),
+                    Some(pressure),
+                    timestamp,
+                )
+                .ok()
             })
             .collect::<Vec<_>>();
+        canvas
+            .commit_stroke(demo, BrushConfig::default())
+            .expect("valid demo stroke");
+        canvas.clear_history();
 
-        state.completed.push(demo);
-        state
+        Self {
+            canvas,
+            active_pen_id: None,
+            active_pen_samples: Vec::new(),
+            active_mouse_samples: None,
+            cursor_position: None,
+            mouse_epoch: None,
+            #[cfg(target_os = "windows")]
+            last_pen_axes: None,
+        }
+    }
+
+    fn resize_viewport(&mut self, size: PhysicalSize<u32>) {
+        self.canvas.resize_viewport(size.width, size.height);
+    }
+
+    fn active_samples(&self) -> Option<&[StrokeSample]> {
+        if !self.active_pen_samples.is_empty() {
+            return Some(&self.active_pen_samples);
+        }
+        self.active_mouse_samples
+            .as_deref()
+            .filter(|samples| !samples.is_empty())
     }
 
     fn begin_mouse(&mut self) {
         if self.active_pen_id.is_some() {
+            return;
+        }
+        let Some(position) = self.cursor_position else {
+            return;
+        };
+        if self
+            .canvas
+            .viewport()
+            .screen_to_document(position)
+            .is_none()
+        {
             return;
         }
         self.mouse_epoch = Some(Instant::now());
@@ -99,41 +146,42 @@ impl InputState {
     }
 
     fn push_mouse_position(&mut self) {
-        let (Some(position), Some(epoch), Some(samples)) = (
-            self.cursor_position,
-            self.mouse_epoch,
-            self.active_mouse_samples.as_mut(),
-        ) else {
+        let (Some(position), Some(epoch)) = (self.cursor_position, self.mouse_epoch) else {
             return;
         };
-
+        let Some(document_position) = self.canvas.viewport().screen_to_document_clamped(position)
+        else {
+            return;
+        };
         let timestamp_ns = epoch.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-        if let Ok(sample) = StrokeSample::new(position, None, timestamp_ns) {
+        let Ok(sample) = StrokeSample::new(document_position, None, timestamp_ns) else {
+            return;
+        };
+        if let Some(samples) = self.active_mouse_samples.as_mut() {
             Self::append_monotonic(samples, sample);
         }
     }
 
-    fn snapshot(&self) -> Vec<Vec<StrokeSample>> {
-        let mut strokes = self.completed.clone();
-        if !self.active_pen_samples.is_empty() {
-            strokes.push(self.active_pen_samples.clone());
-        }
-        if let Some(samples) = &self.active_mouse_samples {
-            if !samples.is_empty() {
-                strokes.push(samples.clone());
-            }
-        }
-        strokes
+    #[cfg(target_os = "windows")]
+    fn sample_from_screen(
+        &self,
+        screen_position: DVec2,
+        pressure: Option<f32>,
+        timestamp_ns: u64,
+    ) -> Option<StrokeSample> {
+        let document_position = self
+            .canvas
+            .viewport()
+            .screen_to_document_clamped(screen_position)?;
+        StrokeSample::new(document_position, pressure, timestamp_ns).ok()
     }
 
     fn store_completed(&mut self, samples: Vec<StrokeSample>) {
         if samples.is_empty() {
             return;
         }
-        self.completed.push(samples);
-        if self.completed.len() > MAX_COMPLETED_STROKES {
-            let excess = self.completed.len() - MAX_COMPLETED_STROKES;
-            self.completed.drain(0..excess);
+        if let Err(error) = self.canvas.commit_stroke(samples, BrushConfig::default()) {
+            eprintln!("[document] rejected completed stroke: {error}");
         }
     }
 
@@ -150,6 +198,32 @@ impl InputState {
             }
         }
         target.push(sample);
+    }
+
+    fn undo(&mut self) -> bool {
+        if !self.canvas.can_undo() {
+            return false;
+        }
+        match self.canvas.undo() {
+            Ok(()) => true,
+            Err(error) => {
+                eprintln!("[document] undo failed: {error}");
+                false
+            }
+        }
+    }
+
+    fn redo(&mut self) -> bool {
+        if !self.canvas.can_redo() {
+            return false;
+        }
+        match self.canvas.redo() {
+            Ok(()) => true,
+            Err(error) => {
+                eprintln!("[document] redo failed: {error}");
+                false
+            }
+        }
     }
 
     #[cfg(target_os = "windows")]
@@ -214,15 +288,6 @@ impl GpuVertex {
             attributes: &VERTEX_ATTRIBUTES,
         }
     }
-}
-
-fn document_to_clip(position: DVec2, width: f64, height: f64) -> [f32; 2] {
-    let safe_width = width.max(1.0);
-    let safe_height = height.max(1.0);
-    [
-        (position.x / safe_width * 2.0 - 1.0) as f32,
-        (1.0 - position.y / safe_height * 2.0) as f32,
-    ]
 }
 
 struct GpuRenderer {
@@ -337,37 +402,68 @@ impl GpuRenderer {
         }
     }
 
+    fn append_stroke_mesh(
+        &self,
+        samples: &[StrokeSample],
+        brush: BrushConfig,
+        viewport: CanvasViewport,
+        vertices: &mut Vec<GpuVertex>,
+        indices: &mut Vec<u32>,
+    ) {
+        let Ok(dabs) = tessellate_stroke(samples, brush) else {
+            return;
+        };
+        let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
+            return;
+        };
+        if mesh.is_empty()
+            || vertices.len().saturating_add(mesh.vertices().len()) > MAX_TOTAL_VERTICES
+            || vertices.len() > (u32::MAX as usize).saturating_sub(mesh.vertices().len())
+        {
+            return;
+        }
+
+        let base = vertices.len() as u32;
+        for vertex in mesh.vertices() {
+            vertices.push(GpuVertex {
+                position: viewport.document_to_clip(vertex.position()),
+            });
+        }
+        indices.extend(mesh.indices().iter().map(|index| base + *index));
+    }
+
     fn make_mesh_buffers(
         &self,
-        strokes: &[Vec<StrokeSample>],
+        document: &Document,
+        active_samples: Option<&[StrokeSample]>,
+        viewport: CanvasViewport,
     ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
         let mut indices = Vec::<u32>::new();
-        let width = f64::from(self.config.width.max(1));
-        let height = f64::from(self.config.height.max(1));
 
-        for samples in strokes {
-            let Ok(dabs) = tessellate_stroke(samples, BrushConfig::default()) else {
-                continue;
-            };
-            let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
-                continue;
-            };
-            if mesh.is_empty()
-                || vertices.len().saturating_add(mesh.vertices().len()) > MAX_TOTAL_VERTICES
-                || vertices.len() > (u32::MAX as usize).saturating_sub(mesh.vertices().len())
-            {
+        for layer in document.layers() {
+            if !layer.is_visible() || layer.opacity() <= 0.0 {
                 continue;
             }
-
-            let base = vertices.len() as u32;
-            for vertex in mesh.vertices() {
-                let position = vertex.position();
-                vertices.push(GpuVertex {
-                    position: document_to_clip(position, width, height),
-                });
+            for stroke in layer.strokes() {
+                self.append_stroke_mesh(
+                    stroke.samples(),
+                    stroke.brush(),
+                    viewport,
+                    &mut vertices,
+                    &mut indices,
+                );
             }
-            indices.extend(mesh.indices().iter().map(|index| base + *index));
+        }
+
+        if let Some(samples) = active_samples {
+            self.append_stroke_mesh(
+                samples,
+                BrushConfig::default(),
+                viewport,
+                &mut vertices,
+                &mut indices,
+            );
         }
 
         if vertices.is_empty() {
@@ -394,7 +490,12 @@ impl GpuRenderer {
         (vertex_buffer, index_buffer, index_count)
     }
 
-    fn render(&mut self, strokes: &[Vec<StrokeSample>]) {
+    fn render(
+        &mut self,
+        document: &Document,
+        active_samples: Option<&[StrokeSample]>,
+        viewport: CanvasViewport,
+    ) {
         if self.config.width == 0 || self.config.height == 0 {
             return;
         }
@@ -427,7 +528,8 @@ impl GpuRenderer {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let (vertex_buffer, index_buffer, index_count) = self.make_mesh_buffers(strokes);
+        let (vertex_buffer, index_buffer, index_count) =
+            self.make_mesh_buffers(document, active_samples, viewport);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -457,7 +559,9 @@ impl GpuRenderer {
                 multiview_mask: None,
             });
 
-            if index_count > 0 {
+            let (scissor_x, scissor_y, scissor_width, scissor_height) = viewport.scissor_rect();
+            if index_count > 0 && scissor_width > 0 && scissor_height > 0 {
+                pass.set_scissor_rect(scissor_x, scissor_y, scissor_width, scissor_height);
                 pass.set_pipeline(&self.render_pipeline);
                 pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -475,6 +579,7 @@ struct App {
     window: Option<Arc<Window>>,
     renderer: Option<GpuRenderer>,
     input: Arc<Mutex<InputState>>,
+    modifiers: ModifiersState,
 }
 
 impl App {
@@ -483,6 +588,7 @@ impl App {
             window: None,
             renderer: None,
             input,
+            modifiers: ModifiersState::default(),
         }
     }
 }
@@ -502,6 +608,7 @@ impl ApplicationHandler<AppEvent> for App {
                 )
                 .expect("failed to create desktop window"),
         );
+        lock(&self.input).resize_viewport(window.inner_size());
         let renderer = match pollster::block_on(GpuRenderer::new(
             event_loop.owned_display_handle(),
             window.clone(),
@@ -530,6 +637,7 @@ impl ApplicationHandler<AppEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
+                lock(&self.input).resize_viewport(size);
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.resize(size);
                 }
@@ -539,8 +647,12 @@ impl ApplicationHandler<AppEvent> for App {
             }
             WindowEvent::RedrawRequested => {
                 if let Some(renderer) = self.renderer.as_mut() {
-                    let strokes = lock(&self.input).snapshot();
-                    renderer.render(&strokes);
+                    let input = lock(&self.input);
+                    renderer.render(
+                        input.canvas.document(),
+                        input.active_samples(),
+                        input.canvas.viewport(),
+                    );
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -566,6 +678,28 @@ impl ApplicationHandler<AppEvent> for App {
             }
             WindowEvent::Focused(false) => {
                 lock(&self.input).end_mouse();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
+            WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Pressed
+                    && !event.repeat
+                    && self.modifiers.control_key() =>
+            {
+                let changed = match event.physical_key {
+                    PhysicalKey::Code(KeyCode::KeyZ) if self.modifiers.shift_key() => {
+                        lock(&self.input).redo()
+                    }
+                    PhysicalKey::Code(KeyCode::KeyZ) => lock(&self.input).undo(),
+                    PhysicalKey::Code(KeyCode::KeyY) => lock(&self.input).redo(),
+                    _ => false,
+                };
+                if changed {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
             }
             _ => {}
         }
@@ -668,6 +802,19 @@ unsafe fn handle_windows_pointer_message(
 
     let mut input = lock(input);
     if message.message == WM_POINTERDOWN {
+        let mut client_point: POINT = latest.pointerInfo.ptPixelLocation;
+        if unsafe { ScreenToClient(message.hwnd, &mut client_point) } == 0
+            || input
+                .canvas
+                .viewport()
+                .screen_to_document(DVec2::new(
+                    f64::from(client_point.x),
+                    f64::from(client_point.y),
+                ))
+                .is_none()
+        {
+            return false;
+        }
         input.begin_pen(pointer_id);
     }
     if input.active_pen_id != Some(pointer_id) {
@@ -693,12 +840,9 @@ unsafe fn handle_windows_pointer_message(
             rotation,
         };
         let timestamp_ns = u64::from(info.pointerInfo.dwTime) * 1_000_000;
+        let screen_position = DVec2::new(f64::from(client_point.x), f64::from(client_point.y));
 
-        if let Ok(sample) = StrokeSample::new(
-            DVec2::new(f64::from(client_point.x), f64::from(client_point.y)),
-            pressure,
-            timestamp_ns,
-        ) {
+        if let Some(sample) = input.sample_from_screen(screen_position, pressure, timestamp_ns) {
             input.append_pen_sample(pointer_id, sample, axes);
         }
     }
@@ -721,28 +865,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn document_edges_map_to_clip_space_edges() {
-        assert_eq!(
-            document_to_clip(DVec2::new(0.0, 0.0), 100.0, 50.0),
-            [-1.0, 1.0]
-        );
-        assert_eq!(
-            document_to_clip(DVec2::new(100.0, 50.0), 100.0, 50.0),
-            [1.0, -1.0]
-        );
-    }
-
-    #[test]
-    fn demo_stroke_produces_non_empty_engine_mesh() {
+    fn demo_stroke_is_stored_in_the_document_and_produces_a_mesh() {
         let input = InputState::with_demo_stroke(960.0, 640.0);
-        let strokes = input.snapshot();
-        let dabs = tessellate_stroke(&strokes[0], BrushConfig::default()).expect("demo dabs");
+        let stroke = &input.canvas.document().layers()[0].strokes()[0];
+        let dabs = tessellate_stroke(stroke.samples(), stroke.brush()).expect("demo dabs");
         let mesh =
             tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()).expect("demo mesh");
 
         assert!(!mesh.is_empty());
         assert!(!mesh.vertices().is_empty());
         assert!(mesh.triangle_count() > 0);
+    }
+
+    #[test]
+    fn completed_mouse_stroke_is_committed_and_undoable() {
+        let mut input = InputState::with_demo_stroke(960.0, 640.0);
+        let initial = input.canvas.document().layers()[0].strokes().len();
+
+        input.update_mouse_position(PhysicalPosition::new(480.0, 320.0));
+        input.begin_mouse();
+        input.update_mouse_position(PhysicalPosition::new(520.0, 340.0));
+        input.end_mouse();
+
+        assert_eq!(
+            input.canvas.document().layers()[0].strokes().len(),
+            initial + 1
+        );
+        assert!(input.undo());
+        assert_eq!(input.canvas.document().layers()[0].strokes().len(), initial);
+        assert!(input.redo());
+        assert_eq!(
+            input.canvas.document().layers()[0].strokes().len(),
+            initial + 1
+        );
+    }
+
+    #[test]
+    fn mouse_down_in_letterbox_does_not_begin_a_stroke() {
+        let mut input = InputState::with_demo_stroke(960.0, 640.0);
+        input.update_mouse_position(PhysicalPosition::new(480.0, 10.0));
+        input.begin_mouse();
+        assert!(input.active_mouse_samples.is_none());
     }
 
     #[test]
