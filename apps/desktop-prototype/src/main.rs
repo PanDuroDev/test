@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    collections::HashMap,
     mem::size_of,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
@@ -51,6 +52,7 @@ struct InputState {
     cursor_position: Option<DVec2>,
     pan_anchor: Option<DVec2>,
     mouse_epoch: Option<Instant>,
+    last_error: Option<String>,
     #[cfg(target_os = "windows")]
     last_pen_axes: Option<PenAxes>,
 }
@@ -94,6 +96,7 @@ impl InputState {
             cursor_position: None,
             pan_anchor: None,
             mouse_epoch: None,
+            last_error: None,
             #[cfg(target_os = "windows")]
             last_pen_axes: None,
         }
@@ -204,8 +207,12 @@ impl InputState {
             return;
         }
         if let Err(error) = self.canvas.commit_stroke(samples, BrushConfig::default()) {
-            eprintln!("[document] rejected completed stroke: {error}");
+            self.last_error = Some(format!("stroke rejected: {error}"));
         }
+    }
+
+    fn take_error(&mut self) -> Option<String> {
+        self.last_error.take()
     }
 
     fn append_monotonic(target: &mut Vec<StrokeSample>, sample: StrokeSample) {
@@ -321,6 +328,14 @@ struct GpuRenderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
+    stroke_cache: HashMap<u64, CachedStroke>,
+}
+
+/// Document-space geometry of one committed stroke, kept across frames.
+#[derive(Default)]
+struct CachedStroke {
+    positions: Vec<DVec2>,
+    indices: Vec<u32>,
 }
 
 impl GpuRenderer {
@@ -403,6 +418,7 @@ impl GpuRenderer {
             queue,
             config,
             render_pipeline,
+            stroke_cache: HashMap::new(),
         })
     }
 
@@ -425,38 +441,72 @@ impl GpuRenderer {
         }
     }
 
-    fn append_stroke_mesh(
-        &self,
+    /// Tessellates a committed stroke once and reuses it on later frames.
+    ///
+    /// shortcut: the in-progress stroke is tessellated every frame; cache it only
+    /// if profiling shows the live stroke is the bottleneck.
+    fn cached_stroke(
+        &mut self,
+        id: u64,
         samples: &[StrokeSample],
         brush: BrushConfig,
+    ) -> &CachedStroke {
+        self.stroke_cache.entry(id).or_insert_with(|| {
+            let Ok(dabs) = tessellate_stroke(samples, brush) else {
+                return CachedStroke::default();
+            };
+            let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
+                return CachedStroke::default();
+            };
+            CachedStroke {
+                positions: mesh.vertices().iter().map(|v| v.position()).collect(),
+                indices: mesh.indices().to_vec(),
+            }
+        })
+    }
+
+    fn append_geometry(
+        positions: &[DVec2],
+        stroke_indices: &[u32],
         viewport: CanvasViewport,
         vertices: &mut Vec<GpuVertex>,
         indices: &mut Vec<u32>,
     ) {
-        let Ok(dabs) = tessellate_stroke(samples, brush) else {
-            return;
-        };
-        let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
-            return;
-        };
-        if mesh.is_empty()
-            || vertices.len().saturating_add(mesh.vertices().len()) > MAX_TOTAL_VERTICES
-            || vertices.len() > (u32::MAX as usize).saturating_sub(mesh.vertices().len())
+        if stroke_indices.is_empty()
+            || vertices.len().saturating_add(positions.len()) > MAX_TOTAL_VERTICES
+            || vertices.len() > (u32::MAX as usize).saturating_sub(positions.len())
         {
             return;
         }
 
         let base = vertices.len() as u32;
-        for vertex in mesh.vertices() {
+        for position in positions {
             vertices.push(GpuVertex {
-                position: viewport.document_to_clip(vertex.position()),
+                position: viewport.document_to_clip(*position),
             });
         }
-        indices.extend(mesh.indices().iter().map(|index| base + *index));
+        indices.extend(stroke_indices.iter().map(|index| base + *index));
+    }
+
+    fn append_live_stroke(
+        &self,
+        samples: &[StrokeSample],
+        viewport: CanvasViewport,
+        vertices: &mut Vec<GpuVertex>,
+        indices: &mut Vec<u32>,
+    ) {
+        let Ok(dabs) = tessellate_stroke(samples, BrushConfig::default()) else {
+            return;
+        };
+        let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
+            return;
+        };
+        let positions: Vec<DVec2> = mesh.vertices().iter().map(|v| v.position()).collect();
+        Self::append_geometry(&positions, mesh.indices(), viewport, vertices, indices);
     }
 
     fn make_mesh_buffers(
-        &self,
+        &mut self,
         document: &Document,
         active_samples: Option<&[StrokeSample]>,
         viewport: CanvasViewport,
@@ -464,29 +514,28 @@ impl GpuRenderer {
         let mut vertices = Vec::<GpuVertex>::new();
         let mut indices = Vec::<u32>::new();
 
+        let mut visible_ids = Vec::new();
         for layer in document.layers() {
             if !layer.is_visible() || layer.opacity() <= 0.0 {
                 continue;
             }
             for stroke in layer.strokes() {
-                self.append_stroke_mesh(
-                    stroke.samples(),
-                    stroke.brush(),
+                let id = stroke.id().get();
+                visible_ids.push(id);
+                let cached = self.cached_stroke(id, stroke.samples(), stroke.brush());
+                Self::append_geometry(
+                    &cached.positions,
+                    &cached.indices,
                     viewport,
                     &mut vertices,
                     &mut indices,
                 );
             }
         }
+        self.stroke_cache.retain(|id, _| visible_ids.contains(id));
 
         if let Some(samples) = active_samples {
-            self.append_stroke_mesh(
-                samples,
-                BrushConfig::default(),
-                viewport,
-                &mut vertices,
-                &mut indices,
-            );
+            self.append_live_stroke(samples, viewport, &mut vertices, &mut indices);
         }
 
         if vertices.is_empty() {
@@ -669,13 +718,19 @@ impl ApplicationHandler<AppEvent> for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let window = self.window.clone();
                 if let Some(renderer) = self.renderer.as_mut() {
-                    let input = lock(&self.input);
+                    let mut input = lock(&self.input);
                     renderer.render(
                         input.canvas.document(),
                         input.active_samples(),
                         input.canvas.viewport(),
                     );
+                    if let Some(error) = input.take_error() {
+                        if let Some(window) = &window {
+                            window.set_title(&format!("Rasm Studio | {error}"));
+                        }
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {

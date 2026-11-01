@@ -521,3 +521,4 @@ target/renderer-spike.png
 
 - 2026-11-01: فُتح Issue #27 وفرع `desktop/document-backed-canvas` لربط prototype بنموذج Document/History، وفصل document coordinates عن بكسلات النافذة، وإضافة Undo/Redo عبر اختصارات لوحة المفاتيح. أضيفت حالة Canvas وviewport mapping واختباراتها، ثم رُبط إدخال mouse/Windows pen والعارض بالمستند. اكتمل CI #41260460992 و#41260977695 بجميع الوظائف الست بما فيها Windows prototype artifact؛ دُمج PR #28 بالالتزام `5f39d46c082aac621d91276f831c6d7e07e36fe8` وأُغلق Issue #27.
 - 2026-11-01: فُتح Issue #29 وفرع `desktop/canvas-pan-zoom` لإضافة zoom/pan للوحة وتصفير modifiers عند فقدان التركيز، وحفظ العرض بعد resize؛ نجح CI في جميع وظائفه ([CI 41263713391](https://github.com/PanDuroDev/test/actions/runs/41263713391)) والـPR رقم #30.
+- 2026-11-01: إصلاح حدود اللوحة (الحد الأيمن/السفلي صار غير شامل)، وإضافة ذاكرة tessellation للضربات المكتملة بدل إعادة بنائها كل إطار، وإظهار أخطاء رفض الضربة في شريط العنوان بدل `stderr` فقط (PR #34).
