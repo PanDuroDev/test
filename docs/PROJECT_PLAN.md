@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 أثبت نموذج النافذة والعرض على Windows، وPR #20 أضاف Document/Layer/Stroke وUndo/Redo، وPR #22 أضاف snapshots المتحققة وصيغة RASM v1. اكتملت المرحلة 6B2 في PR #26: filesystem save/load مع atomic replacement؛ CI #41258015343 نجح في الوظائف الست، بما فيها اختبارات Windows وLinux وmacOS وFormat وClippy وAndroid FFI وWindows prototype artifact. لا يوجد حتى الآن تطبيق رسم متكامل أو Renderer إنتاجي أو Timeline. لم يُختبر قلم مخصص أو تُسجل قياسات latency/ذاكرة. Android/Kotlin FFI محفوظ كتجربة مستقلة وليس هدف المنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 أثبت نموذج النافذة والعرض على Windows، وPR #20 أضاف Document/Layer/Stroke وUndo/Redo، وPR #22 أضاف snapshots المتحققة وصيغة RASM v1، وPR #26 أضاف filesystem save/load ذريًا. CI #41258015343 نجح في الوظائف الست للمرحلة 6B2، وأُغلق Issue #25. يجري تنفيذ Issue #27 على فرع `desktop/document-backed-canvas`: ربط إدخال الرسم بنموذج Document وHistory، وإحداثيات document space وتحويل viewport يحافظ على نسبة الأبعاد، واختصارات Undo/Redo. لا يوجد حتى الآن تطبيق رسم متكامل أو Renderer إنتاجي أو Timeline أو واجهة أدوات نهائية. لم يُختبر قلم مخصص أو تُسجل قياسات latency/ذاكرة. Android/Kotlin FFI محفوظ كتجربة مستقلة وليس هدف المنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -345,6 +345,23 @@
 - benchmark قابل للتكرار مع توثيق الجهاز والدقة ومعدل التحديث.
 - لا توجد أخطاء بصرية معروفة في اختبار جلسة رسم طويلة.
 
+### المرحلة 7A: ربط Canvas Desktop بنموذج المستند وUndo/Redo — قيد التنفيذ عبر [Issue #27](https://github.com/PanDuroDev/test/issues/27)
+
+**فرع التنفيذ:** `desktop/document-backed-canvas`.
+
+**النطاق:**
+- استبدال قائمة الضربات المكتملة المؤقتة بحالة `CanvasDocument` تحتوي `Document` و`History`.
+- إبقاء الضربة النشطة كـ preview مؤقت، ثم حفظها في طبقة المستند عند اكتمال الإدخال.
+- استخدام `ViewportTransform` لفصل document space عن physical window pixels.
+- fitting للوحة 1920×1080 مع letterboxing والحفاظ على نسبة الأبعاد عند تغيير حجم النافذة.
+- تحويل mouse وWindows pen إلى document coordinates، وقص العرض إلى حدود اللوحة.
+- Undo/Redo عبر Ctrl+Z وCtrl+Y وCtrl+Shift+Z.
+- renderer التجريبي يقرأ الضربات المكتملة من Document ويعيد بناء mesh حاليًا عند كل redraw.
+
+**العمل المنفذ على الفرع حتى الآن:** إضافة `apps/desktop-prototype/src/canvas.rs` مع حالة المستند وviewport mapping واختباراتها، وربط `main.rs` بالمستند والـ history وإضافة اختصارات Undo/Redo واختبارات دمج الضربات في المستند.
+
+**الحدود:** لا توجد بعد لوحة أدوات أو واجهة إدارة طبقات أو dialogs للفتح والحفظ. لا يزال renderer spike ولا يطبق compositing كاملًا لقيم opacity. لا توجد قياسات أداء أو اختبار قلم فعلي جديد. يجب اعتبار المرحلة غير مكتملة حتى نجاح CI ومراجعة diff وتحديث الوثائق النهائية.
+
 ### المرحلة 8: تحريك Frame-by-frame
 
 **الهدف:** إضافة workflow تحريك أساسي دون إدخال تعقيد keyframes مبكرًا.
@@ -451,7 +468,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. الحالة الحالية: PR #18 و#20 و#22 و#26 مدمجة؛ Windows prototype، نموذج المستند وUndo/Redo، snapshots وRASM v1، وfilesystem save/load الذري موجودة في main. Issue #25 أُغلق بواسطة PR #26. لا يزال التطبيق الكامل وواجهة الرسم الإنتاجية وRenderer الإنتاجي وTimeline غير موجودة. قلم Windows المخصص وقياسات الأداء لم تُثبت. تجربة Android/Kotlin FFI عبر PR #14/#15 محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
+6. الحالة الحالية: PR #18 و#20 و#22 و#26 مدمجة؛ Windows prototype، نموذج المستند وUndo/Redo، snapshots وRASM v1، وfilesystem save/load الذري موجودة في main. Issue #25 أُغلق بواسطة PR #26. يجري تنفيذ Issue #27 على فرع `desktop/document-backed-canvas` لربط Canvas بالمستند وviewport mapping وUndo/Redo. لا يزال التطبيق الكامل وواجهة الرسم الإنتاجية وRenderer الإنتاجي وTimeline غير موجودة. قلم Windows المخصص وقياسات الأداء لم تُثبت. تجربة Android/Kotlin FFI عبر PR #14/#15 محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -481,3 +498,5 @@ target/renderer-spike.png
 - 2026-11-01: دمج PR #22 بالالتزام `52e9e118bc826862c1a8e76449c7aa59c8acec55` وإغلاق Issue #21. نجحت وظائف CI الست في التشغيل #41257206578؛ أصبحت snapshots المتحققة وصيغة RASM v1 متاحتين في main.
 - 2026-11-01: فتح Issue #25 وبدء فرع `storage/atomic-file-save-load` لتنفيذ save/load ذري باستخدام temporary file في مجلد الوجهة، مع اختبارات حماية الملف السابق عند فشل commit.
 - 2026-11-01: اكتمل تنفيذ المرحلة 6B2 عبر PR #26: `save_atomic` و`load` مع الاستبدال الذري على Windows وUnix، وحدود قراءة صارمة واختبارات فشل commit وتنظيف الملفات المؤقتة. نجحت الوظائف الست في CI #41258015343، وأُنتج Windows prototype artifact. لم يُثبت تشغيل EXE الجديد يدويًا، ولا يشمل هذا العمل autosave أو journal أو crash recovery.
+
+- 2026-11-01: فُتح Issue #27 وفرع `desktop/document-backed-canvas` لربط prototype بنموذج Document/History، وفصل document coordinates عن بكسلات النافذة، وإضافة Undo/Redo عبر اختصارات لوحة المفاتيح. أضيفت حالة Canvas وviewport mapping واختباراتها، ثم رُبط إدخال mouse/Windows pen والعارض بالمستند؛ التنفيذ قيد CI والمراجعة.
