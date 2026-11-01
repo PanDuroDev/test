@@ -54,6 +54,16 @@ pub struct StrokeSample {
 
 impl StrokeSample {
     /// Creates a validated input sample.
+    /// Creates a validated sample from scalar document-space coordinates.
+    pub fn from_xy(
+        x: f64,
+        y: f64,
+        pressure: Option<f32>,
+        timestamp_ns: u64,
+    ) -> Result<Self, StrokeError> {
+        Self::new(DVec2::new(x, y), pressure, timestamp_ns)
+    }
+
     pub fn new(
         position: DVec2,
         pressure: Option<f32>,
