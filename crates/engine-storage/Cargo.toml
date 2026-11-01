@@ -11,3 +11,6 @@ crc32fast.workspace = true
 rasm-engine-document = { path = "../engine-document" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+glam.workspace = true
