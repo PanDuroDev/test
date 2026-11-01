@@ -893,7 +893,10 @@ mod tests {
         assert!(input.undo());
         assert_eq!(input.canvas.document().layers()[0].strokes().len(), initial);
         assert!(input.redo());
-        assert_eq!(input.canvas.document().layers()[0].strokes().len(), initial + 1);
+        assert_eq!(
+            input.canvas.document().layers()[0].strokes().len(),
+            initial + 1
+        );
     }
 
     #[test]
