@@ -815,9 +815,7 @@ impl Operation {
                 let combined_samples = existing_samples
                     .zip(layer_samples)
                     .and_then(|(existing, added)| existing.checked_add(added));
-                if combined_samples
-                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
-                {
+                if combined_samples.is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES) {
                     return Err((
                         Self::RestoreLayer { layer, index },
                         DocumentError::TooManyTotalStrokeSamples,
@@ -1550,7 +1548,6 @@ mod tests {
         assert_eq!(history.undo_len(), 0);
     }
 
-
     #[test]
     fn snapshot_round_trip_preserves_document_state_and_identifiers() {
         let mut document = document();
@@ -1577,8 +1574,18 @@ mod tests {
         let restored = Document::from_snapshot(document.snapshot()).expect("restore snapshot");
         assert_eq!(restored, document);
         assert_eq!(
-            restored.layer(layer_id).expect("layer").stroke(stroke_id).expect("stroke").samples(),
-            document.layer(layer_id).expect("layer").stroke(stroke_id).expect("stroke").samples()
+            restored
+                .layer(layer_id)
+                .expect("layer")
+                .stroke(stroke_id)
+                .expect("stroke")
+                .samples(),
+            document
+                .layer(layer_id)
+                .expect("layer")
+                .stroke(stroke_id)
+                .expect("stroke")
+                .samples()
         );
     }
 
@@ -1714,8 +1721,7 @@ mod tests {
             .execute(&mut source, Edit::remove_layer(removed))
             .expect("remove layer");
 
-        let mut restored =
-            Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore snapshot");
         let mut restored_history = History::default();
         let next = add_layer(&mut restored_history, &mut restored, "Next");
         assert!(next.get() > removed.get());
