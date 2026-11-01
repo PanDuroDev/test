@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 مدمج، وست وظائف CI نجحت، والمستخدم أكد نجاح smoke test لتشغيل نسخة Windows وعرض StrokeMesh والرسم بالفأرة وتغيير/استعادة حجم النافذة. لا يوجد حتى الآن Renderer إنتاجي أو حفظ مستندات أو واجهة منتج متكاملة أو Timeline. يجري تنفيذ المرحلة 6A في Issue #19 على فرع `core/document-model-undo-redo` لإضافة نموذج Document/Layer/Stroke وسجل أوامر قابل للتراجع؛ لم يدمج بعد. لا ندّعي اختبار قلم فعلي أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 مدمج واختبار Windows اليدوي الأساسي أكده المستخدم. PR #20 مدمج بالالتزام `904d0c80271d7371a8474c4c92e2b5248ecc847e`؛ أصبح نموذج Document/Layer/Stroke وسجل Undo/Redo موجودًا في `main`. CI #41255940489 نجح في الوظائف الست، بما فيها 87 اختبارًا لكل من Linux وWindows وmacOS وFormat وClippy وبناء Android FFI وتوليد Kotlin. لا يوجد حتى الآن حفظ ملفات أو recovery أو Renderer إنتاجي أو واجهة رسم مكتملة أو Timeline. يجري تنفيذ Issue #21 لإضافة snapshots متحققة وصيغة `.rasm` ذات إصدار وchecksum؛ كتابة الملفات والحفظ الذري مؤجلة لمهمة لاحقة. لا ندّعي اختبار قلم مخصص أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -260,44 +260,49 @@
 
 **حدود لا تزال قائمة:** لم يُجرَ اختبار قلم مخصص يثبت pressure/tilt، ولا توجد قياسات موثقة لـ input-to-visible latency أو CPU/GPU/memory. لا يعني نجاح النموذج اعتماد UI framework أو renderer إنتاجي. هذه البنود تبقى ضمن تقييم renderer/input اللاحق، ولا تمنع اعتماد إثبات النافذة والعرض الأساسي.
 
-### المرحلة 6A: نموذج المستند والطبقات وسجل التعديلات — قيد التنفيذ عبر [Issue #19](https://github.com/PanDuroDev/test/issues/19)
+### المرحلة 6A: نموذج المستند والطبقات وسجل التعديلات — مكتملة عبر [Issue #19](https://github.com/PanDuroDev/test/issues/19) و[PR #20](https://github.com/PanDuroDev/test/pull/20)
 
-**فرع التنفيذ:** `core/document-model-undo-redo`.
+**الالتزام على main:** `904d0c80271d7371a8474c4c92e2b5248ecc847e`.
 
-**النطاق المنفذ حاليًا على الفرع، ولم يعتمد بعد حتى انتهاء CI والمراجعة:**
-- crate مستقلة `rasm-engine-document` تعتمد على `engine-ink` فقط، ولا تعتمد على UI أو GPU أو Windows أو Tileink.
+**ما أُنجز:**
+- crate مستقلة `rasm-engine-document` تعتمد على `engine-ink` و`glam` فقط، ولا تعتمد على UI أو GPU أو Windows أو Tileink.
 - `Document` بأبعاد raster غير صفرية وطبقة ابتدائية واحدة.
 - `Layer` بمعرف ثابت واسم ورؤية وopacity وترتيب bottom-to-top.
 - `Stroke` يخزن عينات الإدخال الأصلية و`BrushConfig`، وليس `StrokeMesh` مشتقًا.
 - عمليات إضافة/حذف الطبقات، إعادة التسمية، الرؤية، opacity، وإعادة الترتيب.
 - عمليات إضافة/حذف الضربات مع حفظ معرفاتها ومواضعها عند Undo/Redo.
-- سجل أوامر عكسي محدود افتراضيًا إلى 256 عملية، مع حد أقصى مليون sample للضربة الواحدة.
-- فشل العملية يعيد الخطأ دون تغيير المستند أو undo/redo؛ أي تعديل ناجح جديد يمسح redo.
+- سجل أوامر عكسي محدود افتراضيًا إلى 256 عملية، وحد مليون sample للضربة الواحدة، وميزانية snapshot مقدارها 2 مليون sample و100 ألف stroke و2048 layer.
+- API للتحويل إلى DocumentSnapshot وإعادة البناء مع التحقق من الأبعاد والمعرفات والأسماء والفرش والعينات وترتيب التوقيت.
 
-**غير مشمول:** serialization، صيغة `.rasm`، save/load، autosave أو crash recovery. هذه بنود المرحلة 6B.
+**التحقق الفعلي:** [CI #41255940489](https://github.com/PanDuroDev/test/actions/runs/41255940489) نجح في الوظائف الست: **87 اختبارًا على كل نظام تشغيل** (Linux وWindows وmacOS)، وformat وClippy وبناء Android ARM64 وتوليد Kotlin bindings، وبناء/رفع Windows prototype artifact. أُغلق Issue #19 بعد الدمج.
 
-**التحقق المطلوب:** CI على Linux/Windows/macOS، format وClippy، واختبارات invariants وإعادة تطبيق الأوامر. لا توصف المرحلة بأنها مكتملة قبل نجاح كل الفحوص.
+**حدود المرحلة:** لا يوجد ملف `.rasm` أو serialization أو save/load أو autosave أو crash recovery. snapshot API لا تنفذ I/O؛ التخزين الفعلي يبدأ في المرحلة التالية.
 
-### المرحلة 6B: صيغة المشروع والحفظ والاستعادة
+### المرحلة 6B1: snapshots وصيغة ملف .rasm — قيد التنفيذ عبر [Issue #21](https://github.com/PanDuroDev/test/issues/21)
 
-**الهدف:** إضافة طبقة تخزين موثوقة فوق نموذج المستند والأوامر الذي تنفذه المرحلة 6A.
+**فرع التنفيذ:** `storage/versioned-document-format`.
 
-**المهام المقترحة:**
+**النطاق الجاري:**
+- getters لإعدادات `BrushConfig` حتى تحفظ إعدادات الفرشاة وتستعاد عبر constructor المتحقق.
+- `DocumentSnapshot` وطبقات/ضربات/عينات/Brush snapshots عامة مستقلة عن serde وGPU.
+- `Document::snapshot()` و`Document::from_snapshot()` مع التحقق من IDs وduplicates والحدود وبيانات العينات.
+- crate `rasm-engine-storage` لصيغة container ثابتة: magic `RASM`، file version، flags، payload length، CRC32، ثم JSON payload يحمل schema version.
+- رفض الملفات المبتورة، trailing bytes، الملفات الكبيرة، checksum غير المطابق، flags أو versions غير المدعومة، والـ JSON أو المستند غير الصالح.
+- Round-trip يحافظ على IDs وترتيب الطبقات وإعدادات الفرش والعينات الأصلية.
 
-- تعريف صيغة ملف ذات magic/header وschema version صريح مع قواعد رفض الإصدارات غير المدعومة.
-- تسلسل Document/Layer/Stroke/Brush settings مع الحفاظ على IDs وترتيب الطبقات والعينات الأصلية.
-- تصميم حزمة ملفات محلية تحتوي manifest وchunks للأصول والبلاطات عند دخول بيانات raster.
-- تنفيذ حفظ ذري إلى نفس filesystem، والتحقق من سلوك الاستبدال على Windows قبل اعتماد آلية commit.
-- journal أو recovery mechanism، واختبارات انقطاع/فشل الكتابة والترحيل بين schema versions.
-- دراسة استيراد/تصدير OpenRaster دون اعتباره صيغة المشروع الأصلية.
+**خارج النطاق:** filesystem I/O، الكتابة الذرية، الملفات المؤقتة، autosave، journal وcrash recovery. هذه المرحلة تثبت codec bytes فقط، لا تحفظ ملفًا على القرص.
 
-**معايير القبول:**
+**التحقق المطلوب:** round-trip لملف فارغ ومكتمل، corruption/version/length/checksum tests، snapshot invariant tests، وCI كامل على Linux/Windows/macOS. لا توصف المرحلة بأنها مكتملة قبل نجاح جميع الفحوص.
 
-- حفظ مستند وإغلاقه وإعادة فتحه مع تطابق منطقي كامل للطبقات والضربات وإعدادات الفرشاة.
-- round-trip tests لكل نوع بيانات وإصدار schema مدعوم.
-- رفض الملف المبتور أو ذو magic/version أو بيانات غير صالحة دون تعديل المستند المفتوح.
-- atomic save واختبارات فشل الكتابة؛ لا يفسد الحفظ الجديد النسخة السابقة.
-- migration tests عند إضافة أي إصدار schema جديد.
+### المرحلة 6B2: الكتابة الذرية والاستعادة — لم تبدأ
+
+- تنفيذ save/load لمسار محلي على Windows مع سلوك واضح عند وجود ملف سابق.
+- الكتابة إلى temporary file في نفس filesystem، flush/sync، ثم commit ذري متوافق مع Windows.
+- حماية النسخة السابقة من التلف عند فشل الكتابة أو الاستبدال.
+- اختبارات انقطاع/فشل الكتابة وإعادة فتح الملف.
+- تصميم journal/recovery وautosave بعد إثبات سياسة commit.
+
+**معايير القبول:** حفظ وفتح من filesystem، اختبارات round-trip، فشل الكتابة دون إفساد النسخة السابقة، وإثبات السلوك على Windows فعلي.
 
 ### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
@@ -429,7 +434,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، PR #18 مدمج وIssue #17 مغلق بعد smoke test Windows الذي أكده المستخدم. المراحل 1–4 موجودة على main، وتجربة FFI Android محفوظة عبر PR #14/#15. يجري تنفيذ Issue #19 على فرع `core/document-model-undo-redo` لإضافة نموذج المستند وسجل الأوامر؛ لا تبدأ صيغة الحفظ قبل تثبيت API هذا النموذج. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، PR #18 وPR #20 مدمجان، وIssue #17 و#19 مغلقان. نموذج المستند وسجل Undo/Redo وsnapshot import/export موجود في main. يجري تنفيذ Issue #21 على فرع `storage/versioned-document-format` لإضافة صيغة `.rasm` وcodec متحقق؛ filesystem save/atomic replace ما زال خارج main. تجربة FFI Android عبر PR #14/#15 محفوظة وليست هدف المنتج. لا تحذفها أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -453,3 +458,5 @@ target/renderer-spike.png
 - 2026-11-01: اكتمل تشغيل CI #41253986206 بنجاح في الوظائف الست. أُنشئ Artifact `rasm-desktop-prototype-windows-x64` (EXE + README) بحجم مضغوط 2.75 MB وصلاحية حتى 2026-11-14؛ تم تنزيل ZIP وفحص محتوياته وترويسة Windows PE، دون الادعاء بتشغيل EXE على جهاز Windows فعلي.
 - 2026-11-01: أكد المستخدم نجاح تشغيل Windows prototype والاختبارات الوظيفية المتاحة؛ دُمج PR #18 بالالتزام `4dec1f49861949a37572f01d05f8dceaecfa2ec3` وأُغلق Issue #17. لم تُسجل قياسات أداء أو تجربة قلم مخصص.
 - 2026-11-01: فُتح Issue #19 وبدأ فرع `core/document-model-undo-redo` لتنفيذ المرحلة 6A: Document/Layer/Stroke model وbounded command-based Undo/Redo؛ serialization والحفظ مؤجلان للمرحلة 6B.
+- 2026-11-01: دمج PR #20 بالالتزام `904d0c80271d7371a8474c4c92e2b5248ecc847e` وإغلاق Issue #19. اجتاز CI #41255940489 جميع الوظائف الست، بما فيها 87 اختبارًا على كل من Linux وWindows وmacOS، Format وClippy وبناء Android ARM64/Kotlin bindings وWindows artifact.
+- 2026-11-01: فتح Issue #21 وبدء فرع `storage/versioned-document-format` لتنفيذ DocumentSnapshot validated API وversioned `.rasm` container مع CRC32 وJSON schema v1. لم يبدأ filesystem I/O أو atomic save بعد.

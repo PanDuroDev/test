@@ -17,7 +17,7 @@ This is not a general video editor or a full 3D modelling package.
 
 The repository contains a Rust workspace with timeline math, reversible canvas transforms, pointer smoothing, pressure-aware brush sampling, connected stroke mesh geometry, and bounded CPU-side tile coverage/dirty tracking. It also contains an experimental Tileink desktop adapter and a narrow UniFFI boundary.
 
-There is **no complete product drawing application, production renderer, document persistence, save/recovery flow, or animation editor yet**. The first desktop integration prototype was merged in [PR #18](https://github.com/PanDuroDev/test/pull/18). Its six CI jobs passed, and the user ran the Windows executable and confirmed that the applicable window, visible test stroke, mouse drawing, and resize/restore checks worked. The Windows pen pressure/tilt path has not been verified with a dedicated pen device, and no latency/resource benchmark is claimed. The downloadable prototype artifact was produced in [Actions run #41253986206](https://github.com/PanDuroDev/test/actions/runs/41253986206). A document-model foundation is now being developed separately in [Issue #19](https://github.com/PanDuroDev/test/issues/19) on branch `core/document-model-undo-redo`; it is not part of `main` until its PR is merged.
+There is **no complete product drawing application, production renderer, document persistence, save/recovery flow, or animation editor yet**. The first desktop integration prototype was merged in [PR #18](https://github.com/PanDuroDev/test/pull/18). The user confirmed the Windows smoke test for the window, visible test stroke, mouse drawing, and resize/restore behavior. A dedicated pen pressure/tilt hardware test and latency/resource benchmark remain unverified. The document foundation is now in `main`: [PR #20](https://github.com/PanDuroDev/test/pull/20) added the Document/Layer/Stroke model and bounded command-based undo/redo. Its CI run [#41255940489](https://github.com/PanDuroDev/test/actions/runs/41255940489) passed all six jobs, including 87 workspace tests on each of Linux, Windows, and macOS, formatting, Clippy, and the Android FFI build/bindings check. The next persistence increment is being developed under [Issue #21](https://github.com/PanDuroDev/test/issues/21): validated snapshots and a versioned `.rasm` codec. Atomic filesystem save/recovery is still not implemented.
 
 The Android FFI work is preserved as an independent integration experiment:
 - PR #14 added the Rust/Kotlin UniFFI boundary and Android ARM64 build/binding generation.
@@ -47,7 +47,8 @@ The existing Android/Kotlin UniFFI smoke host remains isolated test infrastructu
 - `crates/engine-core`: platform-independent math and timeline contracts.
 - `crates/engine-ink`: validated pointer/pen samples, pressure-aware brush dabs, and renderer-independent connected stroke mesh geometry.
 - `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking.
-- `crates/engine-document` (Issue #19 branch): document/layer/stroke model and reversible command history; persistence is not implemented yet.
+- `crates/engine-document`: document/layer/stroke model, validated snapshot conversion, and reversible command history.
+- `crates/engine-storage` (Issue #21 branch): versioned project codec and corruption checks; filesystem persistence is not implemented yet.
 - `crates/engine-ffi`: narrow UniFFI DTO boundary retained for integration testing.
 - `android/ffi-smoke`: optional Android host for testing the existing Kotlin/Rust boundary; not product UI.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.

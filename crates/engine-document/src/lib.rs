@@ -3,6 +3,7 @@
 //! The document stores original stroke samples and brush settings. GPU meshes and
 //! raster tiles are derived data and must remain outside this crate.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use rasm_engine_ink::{BrushConfig, StrokeSample};
@@ -15,6 +16,15 @@ pub const MAX_STROKE_SAMPLES: usize = 1_000_000;
 
 /// Default maximum number of reversible edits retained by History.
 pub const DEFAULT_HISTORY_LIMIT: usize = 256;
+
+/// Maximum number of layers accepted in a document snapshot.
+pub const MAX_DOCUMENT_LAYERS: usize = 2_048;
+
+/// Maximum number of strokes accepted in a document snapshot.
+pub const MAX_DOCUMENT_STROKES: usize = 100_000;
+
+/// Maximum number of source samples across all strokes in one document.
+pub const MAX_DOCUMENT_TOTAL_SAMPLES: usize = 2_000_000;
 
 /// Stable identifier for a layer within a document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -52,6 +62,14 @@ pub enum DocumentError {
     StrokeNotFound,
     DuplicateLayerId,
     DuplicateStrokeId,
+    InvalidLayerId,
+    InvalidStrokeId,
+    InvalidNextIdentifier,
+    InvalidBrushConfig,
+    InvalidStrokeSample,
+    TooManyLayers,
+    TooManyStrokes,
+    TooManyTotalStrokeSamples,
     IdentifierExhausted,
     ZeroHistoryLimit,
     NothingToUndo,
@@ -74,6 +92,14 @@ impl fmt::Display for DocumentError {
             Self::StrokeNotFound => "the requested stroke does not exist in the target layer",
             Self::DuplicateLayerId => "the layer identifier already exists in the document",
             Self::DuplicateStrokeId => "the stroke identifier already exists in the document",
+            Self::InvalidLayerId => "layer identifiers must be non-zero",
+            Self::InvalidStrokeId => "stroke identifiers must be non-zero",
+            Self::InvalidNextIdentifier => "snapshot next identifier counters are invalid",
+            Self::InvalidBrushConfig => "snapshot contains an invalid brush configuration",
+            Self::InvalidStrokeSample => "snapshot contains an invalid stroke sample",
+            Self::TooManyLayers => "document exceeds the configured layer limit",
+            Self::TooManyStrokes => "document exceeds the configured stroke limit",
+            Self::TooManyTotalStrokeSamples => "document exceeds the configured total sample limit",
             Self::IdentifierExhausted => "document identifier space is exhausted",
             Self::ZeroHistoryLimit => "history limit must be greater than zero",
             Self::NothingToUndo => "there are no edits to undo",
@@ -205,6 +231,248 @@ impl Document {
             .iter()
             .any(|layer| layer.strokes.iter().any(|stroke| stroke.id == id))
     }
+
+    fn total_stroke_count(&self) -> Option<usize> {
+        self.layers.iter().try_fold(0_usize, |count, layer| {
+            count.checked_add(layer.strokes.len())
+        })
+    }
+
+    fn total_sample_count(&self) -> Option<usize> {
+        self.layers.iter().try_fold(0_usize, |count, layer| {
+            layer.strokes.iter().try_fold(count, |total, stroke| {
+                total.checked_add(stroke.samples.len())
+            })
+        })
+    }
+
+    /// Exports a validated, renderer-independent snapshot of the document.
+    pub fn snapshot(&self) -> DocumentSnapshot {
+        DocumentSnapshot {
+            width_px: self.width_px,
+            height_px: self.height_px,
+            next_layer_id: self.next_layer_id,
+            next_stroke_id: self.next_stroke_id,
+            layers: self
+                .layers
+                .iter()
+                .map(|layer| LayerSnapshot {
+                    id: layer.id.get(),
+                    name: layer.name.clone(),
+                    visible: layer.visible,
+                    opacity: layer.opacity,
+                    strokes: layer
+                        .strokes
+                        .iter()
+                        .map(|stroke| StrokeSnapshot {
+                            id: stroke.id.get(),
+                            brush: BrushSnapshot {
+                                base_radius: stroke.brush.base_radius(),
+                                minimum_pressure_ratio: stroke.brush.minimum_pressure_ratio(),
+                                pressure_exponent: stroke.brush.pressure_exponent(),
+                                spacing_ratio: stroke.brush.spacing_ratio(),
+                                max_dabs: stroke.brush.max_dabs(),
+                            },
+                            samples: stroke
+                                .samples
+                                .iter()
+                                .map(|sample| {
+                                    let position = sample.position();
+                                    StrokeSampleSnapshot {
+                                        x: position.x,
+                                        y: position.y,
+                                        pressure: sample.pressure(),
+                                        timestamp_ns: sample.timestamp_ns(),
+                                    }
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Reconstructs a document while validating all snapshot invariants.
+    ///
+    /// IDs and vector ordering are preserved. The next generated IDs are set
+    /// above the maximum stored ID, so newly-created objects cannot collide.
+    pub fn from_snapshot(snapshot: DocumentSnapshot) -> Result<Self, DocumentError> {
+        if snapshot.width_px == 0 || snapshot.height_px == 0 {
+            return Err(DocumentError::InvalidCanvasSize);
+        }
+        if snapshot.layers.is_empty() {
+            return Err(DocumentError::CannotRemoveLastLayer);
+        }
+        if snapshot.layers.len() > MAX_DOCUMENT_LAYERS {
+            return Err(DocumentError::TooManyLayers);
+        }
+
+        let mut layer_ids = HashSet::with_capacity(snapshot.layers.len());
+        let mut stroke_ids = HashSet::new();
+        let mut next_layer_id = 1_u64;
+        let mut next_stroke_id = 1_u64;
+        let mut stroke_count = 0_usize;
+        let mut total_samples = 0_usize;
+        let mut layers = Vec::with_capacity(snapshot.layers.len());
+
+        for layer in snapshot.layers {
+            if layer.id == 0 {
+                return Err(DocumentError::InvalidLayerId);
+            }
+            if !layer_ids.insert(layer.id) {
+                return Err(DocumentError::DuplicateLayerId);
+            }
+            next_layer_id = next_layer_id.max(
+                layer
+                    .id
+                    .checked_add(1)
+                    .ok_or(DocumentError::IdentifierExhausted)?,
+            );
+            validate_layer_name(&layer.name)?;
+            if !layer.opacity.is_finite() || !(0.0..=1.0).contains(&layer.opacity) {
+                return Err(DocumentError::InvalidOpacity);
+            }
+
+            stroke_count = stroke_count
+                .checked_add(layer.strokes.len())
+                .ok_or(DocumentError::TooManyStrokes)?;
+            if stroke_count > MAX_DOCUMENT_STROKES {
+                return Err(DocumentError::TooManyStrokes);
+            }
+
+            let mut strokes = Vec::with_capacity(layer.strokes.len());
+            for stroke in layer.strokes {
+                if stroke.id == 0 {
+                    return Err(DocumentError::InvalidStrokeId);
+                }
+                if !stroke_ids.insert(stroke.id) {
+                    return Err(DocumentError::DuplicateStrokeId);
+                }
+                next_stroke_id = next_stroke_id.max(
+                    stroke
+                        .id
+                        .checked_add(1)
+                        .ok_or(DocumentError::IdentifierExhausted)?,
+                );
+
+                if stroke.samples.is_empty() {
+                    return Err(DocumentError::EmptyStroke);
+                }
+                if stroke.samples.len() > MAX_STROKE_SAMPLES {
+                    return Err(DocumentError::TooManyStrokeSamples);
+                }
+                total_samples = total_samples
+                    .checked_add(stroke.samples.len())
+                    .ok_or(DocumentError::TooManyTotalStrokeSamples)?;
+                if total_samples > MAX_DOCUMENT_TOTAL_SAMPLES {
+                    return Err(DocumentError::TooManyTotalStrokeSamples);
+                }
+
+                let brush = BrushConfig::new(
+                    stroke.brush.base_radius,
+                    stroke.brush.minimum_pressure_ratio,
+                    stroke.brush.pressure_exponent,
+                    stroke.brush.spacing_ratio,
+                    stroke.brush.max_dabs,
+                )
+                .map_err(|_| DocumentError::InvalidBrushConfig)?;
+
+                let mut samples = Vec::with_capacity(stroke.samples.len());
+                let mut previous_timestamp = None;
+                for sample in stroke.samples {
+                    if previous_timestamp.is_some_and(|previous| sample.timestamp_ns < previous) {
+                        return Err(DocumentError::NonMonotonicStrokeTimestamps);
+                    }
+                    let validated = StrokeSample::from_xy(
+                        sample.x,
+                        sample.y,
+                        sample.pressure,
+                        sample.timestamp_ns,
+                    )
+                    .map_err(|_| DocumentError::InvalidStrokeSample)?;
+                    previous_timestamp = Some(sample.timestamp_ns);
+                    samples.push(validated);
+                }
+
+                strokes.push(Stroke {
+                    id: StrokeId(stroke.id),
+                    samples,
+                    brush,
+                });
+            }
+
+            layers.push(Layer {
+                id: LayerId(layer.id),
+                name: layer.name,
+                visible: layer.visible,
+                opacity: layer.opacity,
+                strokes,
+            });
+        }
+
+        if snapshot.next_layer_id < next_layer_id
+            || snapshot.next_stroke_id < next_stroke_id
+            || snapshot.next_layer_id == 0
+            || snapshot.next_stroke_id == 0
+        {
+            return Err(DocumentError::InvalidNextIdentifier);
+        }
+
+        Ok(Self {
+            width_px: snapshot.width_px,
+            height_px: snapshot.height_px,
+            layers,
+            next_layer_id: snapshot.next_layer_id,
+            next_stroke_id: snapshot.next_stroke_id,
+        })
+    }
+}
+
+/// Plain data transfer representation of a document.
+///
+/// Snapshot fields are public by design; callers must use
+/// Document::from_snapshot to validate untrusted input before use.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentSnapshot {
+    pub width_px: u32,
+    pub height_px: u32,
+    pub next_layer_id: u64,
+    pub next_stroke_id: u64,
+    pub layers: Vec<LayerSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerSnapshot {
+    pub id: u64,
+    pub name: String,
+    pub visible: bool,
+    pub opacity: f32,
+    pub strokes: Vec<StrokeSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrokeSnapshot {
+    pub id: u64,
+    pub brush: BrushSnapshot,
+    pub samples: Vec<StrokeSampleSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BrushSnapshot {
+    pub base_radius: f64,
+    pub minimum_pressure_ratio: f64,
+    pub pressure_exponent: f64,
+    pub spacing_ratio: f64,
+    pub max_dabs: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrokeSampleSnapshot {
+    pub x: f64,
+    pub y: f64,
+    pub pressure: Option<f32>,
+    pub timestamp_ns: u64,
 }
 
 /// Result information for edits that allocate a new stable identifier.
@@ -450,6 +718,9 @@ impl Operation {
     fn apply(self, document: &mut Document) -> Result<(Self, EditResult), (Self, DocumentError)> {
         match self {
             Self::AddLayer { name, index } => {
+                if document.layers.len() >= MAX_DOCUMENT_LAYERS {
+                    return Err((Self::AddLayer { name, index }, DocumentError::TooManyLayers));
+                }
                 if let Err(error) = validate_layer_name(&name) {
                     return Err((Self::AddLayer { name, index }, error));
                 }
@@ -500,6 +771,12 @@ impl Operation {
                 Ok((Self::RestoreLayer { layer, index }, EditResult::None))
             }
             Self::RestoreLayer { layer, index } => {
+                if document.layers.len() >= MAX_DOCUMENT_LAYERS {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyLayers,
+                    ));
+                }
                 if index > document.layers.len() {
                     return Err((
                         Self::RestoreLayer { layer, index },
@@ -520,6 +797,28 @@ impl Operation {
                     return Err((
                         Self::RestoreLayer { layer, index },
                         DocumentError::DuplicateStrokeId,
+                    ));
+                }
+
+                let existing_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                let combined_strokes = existing_strokes.checked_add(layer.strokes.len());
+                if combined_strokes.is_none_or(|count| count > MAX_DOCUMENT_STROKES) {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let layer_samples = layer.strokes.iter().try_fold(0_usize, |count, stroke| {
+                    count.checked_add(stroke.samples.len())
+                });
+                let existing_samples = document.total_sample_count();
+                let combined_samples = existing_samples
+                    .zip(layer_samples)
+                    .and_then(|(existing, added)| existing.checked_add(added));
+                if combined_samples.is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES) {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyTotalStrokeSamples,
                     ));
                 }
 
@@ -646,6 +945,31 @@ impl Operation {
                         DocumentError::LayerNotFound,
                     ));
                 };
+                let total_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                if total_strokes >= MAX_DOCUMENT_STROKES {
+                    return Err((
+                        Self::AddStroke {
+                            layer_id,
+                            samples,
+                            brush,
+                        },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let total_samples = document.total_sample_count().unwrap_or(usize::MAX);
+                if total_samples
+                    .checked_add(samples.len())
+                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
+                {
+                    return Err((
+                        Self::AddStroke {
+                            layer_id,
+                            samples,
+                            brush,
+                        },
+                        DocumentError::TooManyTotalStrokeSamples,
+                    ));
+                }
                 let Some(next_id) = document.next_stroke_id.checked_add(1) else {
                     return Err((
                         Self::AddStroke {
@@ -740,6 +1064,31 @@ impl Operation {
                             index,
                         },
                         DocumentError::DuplicateStrokeId,
+                    ));
+                }
+                let total_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                if total_strokes >= MAX_DOCUMENT_STROKES {
+                    return Err((
+                        Self::RestoreStroke {
+                            layer_id,
+                            stroke,
+                            index,
+                        },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let total_samples = document.total_sample_count().unwrap_or(usize::MAX);
+                if total_samples
+                    .checked_add(stroke.samples.len())
+                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
+                {
+                    return Err((
+                        Self::RestoreStroke {
+                            layer_id,
+                            stroke,
+                            index,
+                        },
+                        DocumentError::TooManyTotalStrokeSamples,
                     ));
                 }
 
@@ -1197,5 +1546,255 @@ mod tests {
         );
         assert!(document.layers()[0].strokes().is_empty());
         assert_eq!(history.undo_len(), 0);
+    }
+
+    #[test]
+    fn snapshot_round_trip_preserves_document_state_and_identifiers() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = add_layer(&mut history, &mut document, "Ink");
+        let stroke_id = match history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![
+                        sample(1.5, 2.5, Some(0.4), 10),
+                        sample(8.5, 9.5, Some(0.9), 20),
+                    ],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+
+        let restored = Document::from_snapshot(document.snapshot()).expect("restore snapshot");
+        assert_eq!(restored, document);
+        assert_eq!(
+            restored
+                .layer(layer_id)
+                .expect("layer")
+                .stroke(stroke_id)
+                .expect("stroke")
+                .samples(),
+            document
+                .layer(layer_id)
+                .expect("layer")
+                .stroke(stroke_id)
+                .expect("stroke")
+                .samples()
+        );
+    }
+
+    #[test]
+    fn snapshot_restore_advances_identifiers_without_collisions() {
+        let mut source = document();
+        let mut history = History::default();
+        let layer_id = add_layer(&mut history, &mut source, "Existing");
+        let _stroke_id = match history
+            .execute(
+                &mut source,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 1)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore");
+        let mut restored_history = History::default();
+        let next_layer = add_layer(&mut restored_history, &mut restored, "Next");
+        assert!(next_layer.get() > layer_id.get());
+    }
+
+    #[test]
+    fn snapshot_rejects_empty_layer_list() {
+        let mut snapshot = document().snapshot();
+        snapshot.layers.clear();
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::CannotRemoveLastLayer)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_duplicate_or_zero_layer_ids() {
+        let mut snapshot = document().snapshot();
+        let first = snapshot.layers[0].clone();
+        snapshot.layers.push(first);
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::DuplicateLayerId)
+        );
+
+        let mut snapshot = document().snapshot();
+        snapshot.layers[0].id = 0;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidLayerId)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_layer_opacity() {
+        let mut snapshot = document().snapshot();
+        snapshot.layers[0].opacity = f32::NAN;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidOpacity)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_brush_parameters() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 0)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+
+        let mut snapshot = document.snapshot();
+        snapshot.layers[0].strokes[0].brush.base_radius = 0.0;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidBrushConfig)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_samples_and_non_monotonic_timestamps() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![
+                        sample(0.0, 0.0, Some(1.0), 10),
+                        sample(1.0, 1.0, Some(1.0), 20),
+                    ],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+
+        let mut invalid_position = document.snapshot();
+        invalid_position.layers[0].strokes[0].samples[0].x = f64::NAN;
+        assert_eq!(
+            Document::from_snapshot(invalid_position),
+            Err(DocumentError::InvalidStrokeSample)
+        );
+
+        let mut invalid_timestamps = document.snapshot();
+        invalid_timestamps.layers[0].strokes[0].samples[1].timestamp_ns = 5;
+        assert_eq!(
+            Document::from_snapshot(invalid_timestamps),
+            Err(DocumentError::NonMonotonicStrokeTimestamps)
+        );
+    }
+
+    #[test]
+    fn snapshot_preserves_next_layer_id_after_a_layer_is_removed() {
+        let mut source = document();
+        let mut history = History::default();
+        let removed = add_layer(&mut history, &mut source, "Temporary");
+        history
+            .execute(&mut source, Edit::remove_layer(removed))
+            .expect("remove layer");
+
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored_history = History::default();
+        let next = add_layer(&mut restored_history, &mut restored, "Next");
+        assert!(next.get() > removed.get());
+    }
+
+    #[test]
+    fn snapshot_preserves_next_stroke_id_after_a_stroke_is_removed() {
+        let mut source = document();
+        let mut history = History::default();
+        let layer_id = source.layers()[0].id();
+        let removed = match history
+            .execute(
+                &mut source,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(1.0, 2.0, None, 10)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+        history
+            .execute(&mut source, Edit::remove_stroke(layer_id, removed))
+            .expect("remove stroke");
+
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored_history = History::default();
+        let next = match restored_history
+            .execute(
+                &mut restored,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(3.0, 4.0, None, 20)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add next stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+        assert!(next.get() > removed.get());
+    }
+
+    #[test]
+    fn snapshot_rejects_next_id_counters_below_existing_ids() {
+        let mut snapshot = document().snapshot();
+        snapshot.next_layer_id = 1;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidNextIdentifier)
+        );
+
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 0)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+        let mut snapshot = document.snapshot();
+        snapshot.next_stroke_id = 1;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidNextIdentifier)
+        );
     }
 }

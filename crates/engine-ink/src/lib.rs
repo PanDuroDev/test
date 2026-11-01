@@ -54,6 +54,16 @@ pub struct StrokeSample {
 
 impl StrokeSample {
     /// Creates a validated input sample.
+    /// Creates a validated sample from scalar document-space coordinates.
+    pub fn from_xy(
+        x: f64,
+        y: f64,
+        pressure: Option<f32>,
+        timestamp_ns: u64,
+    ) -> Result<Self, StrokeError> {
+        Self::new(DVec2::new(x, y), pressure, timestamp_ns)
+    }
+
     pub fn new(
         position: DVec2,
         pressure: Option<f32>,
@@ -133,6 +143,26 @@ impl BrushConfig {
             spacing_ratio,
             max_dabs,
         })
+    }
+
+    pub const fn base_radius(self) -> f64 {
+        self.base_radius
+    }
+
+    pub const fn minimum_pressure_ratio(self) -> f64 {
+        self.minimum_pressure_ratio
+    }
+
+    pub const fn pressure_exponent(self) -> f64 {
+        self.pressure_exponent
+    }
+
+    pub const fn spacing_ratio(self) -> f64 {
+        self.spacing_ratio
+    }
+
+    pub const fn max_dabs(self) -> usize {
+        self.max_dabs
     }
 
     /// Returns the brush radius produced by a normalized pressure value.

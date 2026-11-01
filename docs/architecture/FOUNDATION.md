@@ -331,3 +331,20 @@ C_o=C_s+C_d(1-\alpha_s)
 - لا يوجد active-layer UI state أو blend modes أو masks أو raster cache داخل النموذج.
 - لا يخزن النموذج `StrokeMesh`؛ يمكن إعادة اشتقاقه من samples وbrush config.
 - تبقى IDs داخل مستند واحد، ولا تُعرض كمعرفات موزعة عالميًا.
+
+
+### 16. Snapshot API وصيغة المشروع المحلية
+
+يحتوي `rasm-engine-document` على تمثيل داخلي للتحرير، بينما تمثل `DocumentSnapshot` DTO مستقلة يمكن تحويلها إلى bytes دون تسريب أنواع GPU أو الواجهة. `Document::from_snapshot()` لا تثق بالبيانات الواردة: تعيد التحقق من أبعاد اللوحة، وعدد الطبقات والضربات والعينات، والمعرفات الفريدة وغير الصفرية، وأسماء الطبقات، والشفافية، ومعاملات الفرش، وصلاحية العينات وترتيب timestamps. بعد الاستعادة تُضبط عدادات IDs أعلى المعرفات المخزنة حتى لا تصطدم الإضافات الجديدة بمعرفات قديمة.
+
+تُنفذ صيغة `.rasm` v1 في `rasm-engine-storage`، منفصلة عن نموذج المستند. الحاوية الثنائية تتكون من:
+- magic bytes: `RASM`.
+- file version: u16 little-endian.
+- flags: u16، ويجب أن تكون صفرًا في v1.
+- payload length: u64 little-endian.
+- CRC32 للـ payload.
+- JSON payload يحتوي schema version مستقلًا وبيانات DocumentSnapshot.
+
+حد payload الحالي 256 MiB، ويُرفض الطول المعلن قبل محاولة فك JSON إذا تجاوز الحد. يجب أن يطابق طول الملف المعلن تمامًا؛ لا نقبل payload مبتورًا أو bytes زائدة. بعد تحقق checksum وschema تُمرر DTO إلى `Document::from_snapshot()`، ويُرفض أي خرق للـ invariants.
+
+**حدود v1:** لا يوجد ضغط أو chunked raster data أو assets أو file-system I/O أو atomic replace أو autosave أو recovery. codec يعالج bytes فقط؛ آلية كتابة/استبدال الملف وحماية النسخة السابقة ستنفذ منفصلة بعد ثبات صيغة البيانات. لا يعد CRC32 توقيعًا تشفيريًا أو حماية من التلاعب المتعمد؛ وظيفته كشف تلف payload العرضي.
