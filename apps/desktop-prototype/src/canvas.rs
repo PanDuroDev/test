@@ -333,11 +333,106 @@ impl CanvasDocument {
     pub fn clear_history(&mut self) {
         self.history.clear();
     }
+
+    /// Returns the id of the most recent stroke on the top layer.
+    pub fn last_stroke_id(&self) -> Option<u64> {
+        let layer = self.document.layers().last()?;
+        layer.strokes().last().map(|stroke| stroke.id().get())
+    }
+}
+
+/// Current pen or eraser choice, shared by mouse and pen input.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BrushSettings {
+    radius: f64,
+    color: [f32; 4],
+    eraser: bool,
+}
+
+pub const MIN_BRUSH_RADIUS: f64 = 1.0;
+pub const MAX_BRUSH_RADIUS: f64 = 128.0;
+pub const BRUSH_RADIUS_STEP: f64 = 1.25;
+
+/// shortcut: the eraser paints the canvas background colour instead of
+/// blending the layer away; swap it for a real erase blend once the renderer
+/// composites layers with alpha.
+pub const ERASER_COLOR: [f32; 4] = [0.055, 0.065, 0.075, 1.0];
+
+pub const PALETTE: [[f32; 4]; 4] = [
+    [0.10, 0.78, 0.92, 1.0],
+    [0.96, 0.96, 0.98, 1.0],
+    [0.95, 0.36, 0.36, 1.0],
+    [0.98, 0.83, 0.35, 1.0],
+];
+
+impl Default for BrushSettings {
+    fn default() -> Self {
+        Self {
+            radius: 8.0,
+            color: PALETTE[0],
+            eraser: false,
+        }
+    }
+}
+
+impl BrushSettings {
+    pub const fn radius(self) -> f64 {
+        self.radius
+    }
+
+    /// Colour written by the next stroke; the eraser overrides the palette.
+    pub const fn color(self) -> [f32; 4] {
+        if self.eraser { ERASER_COLOR } else { self.color }
+    }
+
+    pub const fn is_eraser(self) -> bool {
+        self.eraser
+    }
+
+    pub fn set_eraser(&mut self, eraser: bool) -> bool {
+        let changed = self.eraser != eraser;
+        self.eraser = eraser;
+        changed
+    }
+
+    pub fn scale_radius(&mut self, factor: f64) -> bool {
+        if !factor.is_finite() || factor <= 0.0 {
+            return false;
+        }
+        let radius = (self.radius * factor).clamp(MIN_BRUSH_RADIUS, MAX_BRUSH_RADIUS);
+        let changed = radius != self.radius;
+        self.radius = radius;
+        changed
+    }
+
+    pub fn select_color(&mut self, index: usize) -> bool {
+        let Some(color) = PALETTE.get(index) else {
+            return false;
+        };
+        let changed = self.color != *color || self.eraser;
+        self.color = *color;
+        self.eraser = false;
+        changed
+    }
+
+    pub fn brush(self) -> BrushConfig {
+        BrushConfig::default()
+            .with_base_radius(self.radius)
+            .expect("brush radius stays inside the validated range")
+    }
+
+    pub fn status(self) -> String {
+        let tool = if self.eraser { "eraser" } else { "pen" };
+        format!("{tool} {:.0}px", self.radius)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH, ViewState};
+    use super::{
+        BRUSH_RADIUS_STEP, BrushSettings, CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT,
+        DOCUMENT_WIDTH, ERASER_COLOR, MAX_BRUSH_RADIUS, MIN_BRUSH_RADIUS, PALETTE, ViewState,
+    };
     use glam::DVec2;
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
@@ -504,6 +599,48 @@ mod tests {
                 .screen_to_document(far_edge - DVec2::new(1.0, 1.0))
                 .is_some()
         );
+    }
+
+    #[test]
+    fn brush_radius_stays_inside_the_supported_range() {
+        let mut brush = BrushSettings::default();
+        for _ in 0..64 {
+            brush.scale_radius(BRUSH_RADIUS_STEP);
+        }
+        assert!((brush.radius() - MAX_BRUSH_RADIUS).abs() < 1.0e-9);
+        for _ in 0..64 {
+            brush.scale_radius(1.0 / BRUSH_RADIUS_STEP);
+        }
+        assert!((brush.radius() - MIN_BRUSH_RADIUS).abs() < 1.0e-9);
+        assert!(!brush.scale_radius(f64::NAN));
+    }
+
+    #[test]
+    fn eraser_paints_the_canvas_background_colour() {
+        let mut brush = BrushSettings::default();
+        assert_eq!(brush.color(), PALETTE[0]);
+        assert!(brush.set_eraser(true));
+        assert_eq!(brush.color(), ERASER_COLOR);
+        assert!(brush.status().starts_with("eraser"));
+    }
+
+    #[test]
+    fn palette_selection_leaves_eraser_mode() {
+        let mut brush = BrushSettings::default();
+        brush.set_eraser(true);
+        assert!(brush.select_color(2));
+        assert!(!brush.is_eraser());
+        assert_eq!(brush.color(), PALETTE[2]);
+        assert!(!brush.select_color(99));
+    }
+
+    #[test]
+    fn committed_stroke_exposes_its_id_for_colouring() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        canvas
+            .commit_stroke(sample_stroke(), BrushSettings::default().brush())
+            .expect("committed stroke");
+        assert!(canvas.last_stroke_id().is_some());
     }
 
     #[test]
