@@ -19,8 +19,8 @@ use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, WindowEvent},
-    keyboard::{KeyCode, ModifiersState, PhysicalKey},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
+    keyboard::{KeyCode, ModifiersState, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -56,8 +56,8 @@ struct InputState {
 
 impl InputState {
     fn with_demo_stroke(width: f64, height: f64) -> Self {
-        let mut canvas = CanvasDocument::new(width as u32, height as u32)
-            .expect("valid initial desktop canvas");
+        let mut canvas =
+            CanvasDocument::new(width as u32, height as u32).expect("valid initial desktop canvas");
         let points = [
             (0.18, 0.58, 0.18_f32, 0_u64),
             (0.28, 0.43, 0.36, 4_000_000),
@@ -117,7 +117,12 @@ impl InputState {
         let Some(position) = self.cursor_position else {
             return;
         };
-        if self.canvas.viewport().screen_to_document(position).is_none() {
+        if self
+            .canvas
+            .viewport()
+            .screen_to_document(position)
+            .is_none()
+        {
             return;
         }
         self.mouse_epoch = Some(Instant::now());
@@ -144,10 +149,7 @@ impl InputState {
         let (Some(position), Some(epoch)) = (self.cursor_position, self.mouse_epoch) else {
             return;
         };
-        let Some(document_position) = self
-            .canvas
-            .viewport()
-            .screen_to_document_clamped(position)
+        let Some(document_position) = self.canvas.viewport().screen_to_document_clamped(position)
         else {
             return;
         };
@@ -837,12 +839,9 @@ unsafe fn handle_windows_pointer_message(
             rotation,
         };
         let timestamp_ns = u64::from(info.pointerInfo.dwTime) * 1_000_000;
-        let screen_position =
-            DVec2::new(f64::from(client_point.x), f64::from(client_point.y));
+        let screen_position = DVec2::new(f64::from(client_point.x), f64::from(client_point.y));
 
-        if let Some(sample) =
-            input.sample_from_screen(screen_position, pressure, timestamp_ns)
-        {
+        if let Some(sample) = input.sample_from_screen(screen_position, pressure, timestamp_ns) {
             input.append_pen_sample(pointer_id, sample, axes);
         }
     }
@@ -887,7 +886,10 @@ mod tests {
         input.update_mouse_position(PhysicalPosition::new(520.0, 340.0));
         input.end_mouse();
 
-        assert_eq!(input.canvas.document().layers()[0].strokes().len(), initial + 1);
+        assert_eq!(
+            input.canvas.document().layers()[0].strokes().len(),
+            initial + 1
+        );
         assert!(input.undo());
         assert_eq!(input.canvas.document().layers()[0].strokes().len(), initial);
         assert!(input.redo());
