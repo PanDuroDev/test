@@ -9,6 +9,63 @@ use rasm_engine_ink::{BrushConfig, StrokeSample};
 pub const DOCUMENT_WIDTH: u32 = 1_920;
 pub const DOCUMENT_HEIGHT: u32 = 1_080;
 
+/// User-controlled zoom multiplier and pan offset layered over the fitted view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ViewState {
+    zoom: f64,
+    pan: DVec2,
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            pan: DVec2::ZERO,
+        }
+    }
+}
+
+impl ViewState {
+    pub const MIN_ZOOM: f64 = 0.25;
+    pub const MAX_ZOOM: f64 = 8.0;
+
+    #[cfg(test)]
+    pub const fn zoom(self) -> f64 {
+        self.zoom
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Zooms around a screen anchor so the document point under it stays fixed.
+    pub fn zoom_at(
+        &mut self,
+        factor: f64,
+        anchor: DVec2,
+        fit_origin: DVec2,
+        fit_zoom: f64,
+    ) -> bool {
+        if !factor.is_finite() || factor <= 0.0 || !fit_zoom.is_finite() || fit_zoom <= 0.0 {
+            return false;
+        }
+        let next_zoom = (self.zoom * factor).clamp(Self::MIN_ZOOM, Self::MAX_ZOOM);
+        if next_zoom == self.zoom {
+            return false;
+        }
+        let offset = anchor - fit_origin - self.pan;
+        self.pan = anchor - fit_origin - offset * (next_zoom / self.zoom);
+        self.zoom = next_zoom;
+        true
+    }
+
+    pub fn pan_by(&mut self, delta: DVec2) {
+        if delta.is_finite() {
+            self.pan += delta;
+        }
+    }
+}
+
 /// Screen-space rectangle occupied by the fitted document canvas.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasViewport {
@@ -28,15 +85,33 @@ impl CanvasViewport {
         screen_width: u32,
         screen_height: u32,
     ) -> Option<Self> {
+        Self::fit_view(
+            document_width,
+            document_height,
+            screen_width,
+            screen_height,
+            ViewState::default(),
+        )
+    }
+
+    /// Fits the document, then applies the user zoom and pan on top of that fit.
+    pub fn fit_view(
+        document_width: u32,
+        document_height: u32,
+        screen_width: u32,
+        screen_height: u32,
+        view: ViewState,
+    ) -> Option<Self> {
         if document_width == 0 || document_height == 0 || screen_width == 0 || screen_height == 0 {
             return None;
         }
 
         let document_size = DVec2::new(f64::from(document_width), f64::from(document_height));
         let screen_size = DVec2::new(f64::from(screen_width), f64::from(screen_height));
-        let zoom = (screen_size.x / document_size.x).min(screen_size.y / document_size.y);
-        let fitted_size = document_size * zoom;
-        let screen_origin = (screen_size - fitted_size) * 0.5;
+        let fit_zoom = (screen_size.x / document_size.x).min(screen_size.y / document_size.y);
+        let fit_origin = (screen_size - document_size * fit_zoom) * 0.5;
+        let zoom = fit_zoom * view.zoom;
+        let screen_origin = fit_origin + view.pan;
         let transform = ViewportTransform::new(zoom, 0.0, screen_origin).ok()?;
 
         Some(Self {
@@ -44,7 +119,7 @@ impl CanvasViewport {
             screen_width: screen_size.x,
             screen_height: screen_size.y,
             screen_origin,
-            screen_size: fitted_size,
+            screen_size: document_size * zoom,
             document_size,
         })
     }
@@ -131,6 +206,9 @@ pub struct CanvasDocument {
     document: Document,
     history: History,
     viewport: CanvasViewport,
+    view: ViewState,
+    screen_width: u32,
+    screen_height: u32,
 }
 
 impl CanvasDocument {
@@ -144,6 +222,9 @@ impl CanvasDocument {
             document,
             history: History::default(),
             viewport,
+            view: ViewState::default(),
+            screen_width,
+            screen_height,
         })
     }
 
@@ -156,11 +237,56 @@ impl CanvasDocument {
     }
 
     pub fn resize_viewport(&mut self, screen_width: u32, screen_height: u32) {
-        if let Some(viewport) = CanvasViewport::fit(
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
+        self.refresh_viewport();
+    }
+
+    /// Zooms around a screen-space anchor and returns whether the view changed.
+    pub fn zoom_at(&mut self, factor: f64, anchor: DVec2) -> bool {
+        let (fit_origin, fit_zoom) = self.fit_basis();
+        if !self.view.zoom_at(factor, anchor, fit_origin, fit_zoom) {
+            return false;
+        }
+        self.refresh_viewport();
+        true
+    }
+
+    pub fn pan_by(&mut self, delta: DVec2) {
+        if !delta.is_finite() || delta == DVec2::ZERO {
+            return;
+        }
+        self.view.pan_by(delta);
+        self.refresh_viewport();
+    }
+
+    pub fn reset_view(&mut self) {
+        self.view.reset();
+        self.refresh_viewport();
+    }
+
+    #[cfg(test)]
+    pub const fn view(&self) -> ViewState {
+        self.view
+    }
+
+    fn fit_basis(&self) -> (DVec2, f64) {
+        let document_size = DVec2::new(
+            f64::from(self.document.width_px()),
+            f64::from(self.document.height_px()),
+        );
+        let screen_size = DVec2::new(f64::from(self.screen_width), f64::from(self.screen_height));
+        let fit_zoom = (screen_size.x / document_size.x).min(screen_size.y / document_size.y);
+        ((screen_size - document_size * fit_zoom) * 0.5, fit_zoom)
+    }
+
+    fn refresh_viewport(&mut self) {
+        if let Some(viewport) = CanvasViewport::fit_view(
             self.document.width_px(),
             self.document.height_px(),
-            screen_width,
-            screen_height,
+            self.screen_width,
+            self.screen_height,
+            self.view,
         ) {
             self.viewport = viewport;
         }
@@ -210,7 +336,7 @@ impl CanvasDocument {
 
 #[cfg(test)]
 mod tests {
-    use super::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH};
+    use super::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH, ViewState};
     use glam::DVec2;
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
@@ -301,5 +427,82 @@ mod tests {
             .commit_stroke(Vec::new(), BrushConfig::default())
             .expect("empty no-op");
         assert!(!canvas.can_undo());
+    }
+
+    #[test]
+    fn zoom_keeps_the_document_point_under_the_cursor_fixed() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let document_point = DVec2::new(700.0, 350.0);
+        let anchor = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
+
+        assert!(canvas.zoom_at(2.0, anchor));
+        assert!((canvas.view().zoom() - 2.0).abs() < 1.0e-9);
+        let mapped = canvas
+            .viewport()
+            .screen_to_document(anchor)
+            .expect("anchor stays on the canvas");
+        assert!(mapped.distance(document_point) < 1.0e-8);
+    }
+
+    #[test]
+    fn zoom_is_clamped_to_the_supported_range() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let anchor = DVec2::new(480.0, 320.0);
+        for _ in 0..32 {
+            canvas.zoom_at(2.0, anchor);
+        }
+        assert!((canvas.view().zoom() - ViewState::MAX_ZOOM).abs() < 1.0e-9);
+        for _ in 0..64 {
+            canvas.zoom_at(0.5, anchor);
+        }
+        assert!((canvas.view().zoom() - ViewState::MIN_ZOOM).abs() < 1.0e-9);
+        assert!(!canvas.zoom_at(1.0, anchor));
+    }
+
+    #[test]
+    fn pan_shifts_the_screen_mapping_by_the_same_delta() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let document_point = DVec2::new(300.0, 400.0);
+        let before = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
+        let delta = DVec2::new(35.0, -20.0);
+        canvas.pan_by(delta);
+        let after = canvas
+            .viewport()
+            .transform()
+            .canvas_to_screen(document_point);
+        assert!((after - before - delta).length() < 1.0e-8);
+    }
+
+    #[test]
+    fn reset_view_restores_the_fitted_mapping() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let anchor = DVec2::new(500.0, 360.0);
+        canvas.zoom_at(3.0, anchor);
+        canvas.pan_by(DVec2::new(40.0, 25.0));
+        canvas.reset_view();
+
+        let fitted = CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640)
+            .expect("fitted viewport");
+        assert_eq!(canvas.viewport().transform(), fitted.transform());
+    }
+
+    #[test]
+    fn resize_keeps_the_user_zoom() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        canvas.zoom_at(2.0, DVec2::new(480.0, 320.0));
+        canvas.resize_viewport(1_600, 900);
+        assert!((canvas.view().zoom() - 2.0).abs() < 1.0e-9);
+        assert!(
+            canvas
+                .viewport()
+                .screen_to_document(DVec2::new(800.0, 450.0))
+                .is_some()
+        );
     }
 }

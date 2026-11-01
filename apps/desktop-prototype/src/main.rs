@@ -18,7 +18,7 @@ use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::{KeyCode, ModifiersState, PhysicalKey},
     window::{Window, WindowId},
@@ -49,6 +49,7 @@ struct InputState {
     active_pen_samples: Vec<StrokeSample>,
     active_mouse_samples: Option<Vec<StrokeSample>>,
     cursor_position: Option<DVec2>,
+    pan_anchor: Option<DVec2>,
     mouse_epoch: Option<Instant>,
     #[cfg(target_os = "windows")]
     last_pen_axes: Option<PenAxes>,
@@ -91,6 +92,7 @@ impl InputState {
             active_pen_samples: Vec::new(),
             active_mouse_samples: None,
             cursor_position: None,
+            pan_anchor: None,
             mouse_epoch: None,
             #[cfg(target_os = "windows")]
             last_pen_axes: None,
@@ -131,7 +133,13 @@ impl InputState {
     }
 
     fn update_mouse_position(&mut self, position: PhysicalPosition<f64>) {
-        self.cursor_position = Some(DVec2::new(position.x, position.y));
+        let position = DVec2::new(position.x, position.y);
+        if let Some(anchor) = self.pan_anchor {
+            let delta = position - anchor;
+            self.pan_anchor = Some(position);
+            self.canvas.pan_by(delta);
+        }
+        self.cursor_position = Some(position);
         if self.active_mouse_samples.is_some() {
             self.push_mouse_position();
         }
@@ -143,6 +151,21 @@ impl InputState {
         };
         self.mouse_epoch = None;
         self.store_completed(samples);
+    }
+
+    fn begin_pan(&mut self) {
+        self.pan_anchor = self.cursor_position;
+    }
+
+    fn end_pan(&mut self) {
+        self.pan_anchor = None;
+    }
+
+    fn zoom_at_cursor(&mut self, factor: f64) -> bool {
+        let Some(anchor) = self.cursor_position else {
+            return false;
+        };
+        self.canvas.zoom_at(factor, anchor)
     }
 
     fn push_mouse_position(&mut self) {
@@ -603,7 +626,7 @@ impl ApplicationHandler<AppEvent> for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("Rasm Studio | Windows GPU + Pen Prototype")
+                        .with_title("Rasm Studio | wheel zoom, middle-drag pan, Ctrl+0 reset")
                         .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
                 )
                 .expect("failed to create desktop window"),
@@ -676,8 +699,37 @@ impl ApplicationHandler<AppEvent> for App {
                     window.request_redraw();
                 }
             }
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Middle,
+                ..
+            } => {
+                let mut input = lock(&self.input);
+                match state {
+                    ElementState::Pressed => input.begin_pan(),
+                    ElementState::Released => input.end_pan(),
+                }
+                drop(input);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let step = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => f64::from(y),
+                    MouseScrollDelta::PixelDelta(position) => position.y / 100.0,
+                };
+                if step != 0.0 && lock(&self.input).zoom_at_cursor(1.2_f64.powf(step)) {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
             WindowEvent::Focused(false) => {
-                lock(&self.input).end_mouse();
+                self.modifiers = ModifiersState::default();
+                let mut input = lock(&self.input);
+                input.end_mouse();
+                input.end_pan();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
@@ -693,6 +745,10 @@ impl ApplicationHandler<AppEvent> for App {
                     }
                     PhysicalKey::Code(KeyCode::KeyZ) => lock(&self.input).undo(),
                     PhysicalKey::Code(KeyCode::KeyY) => lock(&self.input).redo(),
+                    PhysicalKey::Code(KeyCode::Digit0) => {
+                        lock(&self.input).canvas.reset_view();
+                        true
+                    }
                     _ => false,
                 };
                 if changed {
