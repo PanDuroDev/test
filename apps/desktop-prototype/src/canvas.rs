@@ -49,14 +49,17 @@ impl CanvasViewport {
         })
     }
 
+    #[cfg(test)]
     pub const fn transform(self) -> ViewportTransform {
         self.transform
     }
 
+    #[cfg(test)]
     pub const fn screen_origin(self) -> DVec2 {
         self.screen_origin
     }
 
+    #[cfg(test)]
     pub const fn screen_size(self) -> DVec2 {
         self.screen_size
     }
