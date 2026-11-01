@@ -137,6 +137,57 @@ pub fn hit_test(
     }
 }
 
+/// Appends a compact status strip to the bottom of the desktop surface.
+pub fn append_status_geometry(
+    message: Option<&str>,
+    screen_width: u32,
+    screen_height: u32,
+    vertices: &mut Vec<PanelVertex>,
+    indices: &mut Vec<u32>,
+) {
+    let Some(message) = message.filter(|message| !message.trim().is_empty()) else {
+        return;
+    };
+    if screen_width < 160 || screen_height < 48 {
+        return;
+    }
+
+    let left = PANEL_X;
+    let width = (screen_width as f32 - PANEL_X * 2.0).max(1.0);
+    let height = 24.0;
+    let top = screen_height as f32 - height - 10.0;
+    rect(
+        vertices,
+        indices,
+        left,
+        top,
+        width,
+        height,
+        [0.035, 0.045, 0.056, 0.94],
+    );
+
+    let max_chars = ((width - 16.0) / (6.0 * TEXT_SCALE)).floor().max(0.0) as usize;
+    let text = message
+        .chars()
+        .map(|character| {
+            if character.is_ascii() {
+                character.to_ascii_uppercase()
+            } else {
+                ' '
+            }
+        })
+        .take(max_chars)
+        .collect::<String>();
+    draw_text(
+        vertices,
+        indices,
+        left + 8.0,
+        top + 8.0,
+        &text,
+        [0.78, 0.86, 0.92, 1.0],
+    );
+}
+
 pub fn append_geometry(
     document: &Document,
     active_layer: LayerId,
@@ -393,6 +444,9 @@ fn glyph(character: char) -> [u8; 7] {
         '7' => [31, 1, 2, 4, 8, 8, 8],
         '8' => [14, 17, 17, 14, 17, 17, 14],
         '9' => [14, 17, 17, 15, 1, 1, 14],
+        ':' => [0, 4, 4, 0, 4, 4, 0],
+        '.' => [0, 0, 0, 0, 0, 12, 12],
+        '/' => [1, 2, 2, 4, 8, 8, 16],
         '+' => [0, 4, 4, 31, 4, 4, 0],
         '-' => [0, 0, 0, 31, 0, 0, 0],
         ' ' => [0; 7],
@@ -460,6 +514,27 @@ mod tests {
             Some(LayerPanelAction::Select(after_scroll))
         );
         assert_ne!(first_visible, after_scroll);
+    }
+
+    #[test]
+    fn status_strip_geometry_is_finite_and_has_valid_indices() {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        super::append_status_geometry(
+            Some("OPEN FAILED: CHECKSUM MISMATCH"),
+            960,
+            640,
+            &mut vertices,
+            &mut indices,
+        );
+
+        assert!(!vertices.is_empty());
+        assert!(!indices.is_empty());
+        assert!(vertices.iter().all(|vertex| {
+            vertex.position.iter().all(|value| value.is_finite())
+                && vertex.color.iter().all(|value| value.is_finite())
+        }));
+        assert!(indices.iter().all(|index| (*index as usize) < vertices.len()));
     }
 
     #[test]
