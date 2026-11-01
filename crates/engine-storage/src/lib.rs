@@ -356,16 +356,10 @@ mod tests {
         let mut history = History::default();
 
         history
-            .execute(
-                &mut document,
-                Edit::rename_layer(first_layer, "Sketch"),
-            )
+            .execute(&mut document, Edit::rename_layer(first_layer, "Sketch"))
             .expect("rename layer");
         history
-            .execute(
-                &mut document,
-                Edit::set_layer_opacity(first_layer, 0.85),
-            )
+            .execute(&mut document, Edit::set_layer_opacity(first_layer, 0.85))
             .expect("set opacity");
         history
             .execute(
@@ -449,10 +443,7 @@ mod tests {
     fn unsupported_file_version_is_rejected() {
         let mut bytes = encode(&Document::new(10, 10).expect("document")).expect("encode");
         bytes[4..6].copy_from_slice(&2_u16.to_le_bytes());
-        assert_eq!(
-            decode(&bytes),
-            Err(StorageError::UnsupportedFileVersion(2))
-        );
+        assert_eq!(decode(&bytes), Err(StorageError::UnsupportedFileVersion(2)));
     }
 
     #[test]
@@ -493,20 +484,16 @@ mod tests {
 
     #[test]
     fn unsupported_schema_version_is_rejected() {
-        let mut stored: StoredDocument =
-            serde_json::from_slice(
-                &encode(&Document::new(10, 10).expect("document"))
-                    .expect("encode")[HEADER_SIZE..],
-            )
-            .expect("stored document");
+        let mut stored: StoredDocument = serde_json::from_slice(
+            &encode(&Document::new(10, 10).expect("document")).expect("encode")[HEADER_SIZE..],
+        )
+        .expect("stored document");
         stored.schema_version = SCHEMA_VERSION + 1;
         let payload = serde_json::to_vec(&stored).expect("serialize");
         let bytes = wrap_payload(&payload).expect("wrap");
         assert_eq!(
             decode(&bytes),
-            Err(StorageError::UnsupportedSchemaVersion(
-                SCHEMA_VERSION + 1
-            ))
+            Err(StorageError::UnsupportedSchemaVersion(SCHEMA_VERSION + 1))
         );
     }
 
