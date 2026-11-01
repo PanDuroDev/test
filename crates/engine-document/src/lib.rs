@@ -1711,7 +1711,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn snapshot_preserves_next_layer_id_after_a_layer_is_removed() {
         let mut source = document();
@@ -1750,8 +1749,7 @@ mod tests {
             .execute(&mut source, Edit::remove_stroke(layer_id, removed))
             .expect("remove stroke");
 
-        let mut restored =
-            Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore snapshot");
         let mut restored_history = History::default();
         let next = match restored_history
             .execute(
