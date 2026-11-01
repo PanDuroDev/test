@@ -231,6 +231,20 @@ impl Document {
             .any(|layer| layer.strokes.iter().any(|stroke| stroke.id == id))
     }
 
+    fn total_stroke_count(&self) -> Option<usize> {
+        self.layers.iter().try_fold(0_usize, |count, layer| {
+            count.checked_add(layer.strokes.len())
+        })
+    }
+
+    fn total_sample_count(&self) -> Option<usize> {
+        self.layers.iter().try_fold(0_usize, |count, layer| {
+            layer.strokes.iter().try_fold(count, |total, stroke| {
+                total.checked_add(stroke.samples.len())
+            })
+        })
+    }
+
     /// Exports a validated, renderer-independent snapshot of the document.
     pub fn snapshot(&self) -> DocumentSnapshot {
         DocumentSnapshot {
@@ -690,6 +704,9 @@ impl Operation {
     fn apply(self, document: &mut Document) -> Result<(Self, EditResult), (Self, DocumentError)> {
         match self {
             Self::AddLayer { name, index } => {
+                if document.layers.len() >= MAX_DOCUMENT_LAYERS {
+                    return Err((Self::AddLayer { name, index }, DocumentError::TooManyLayers));
+                }
                 if let Err(error) = validate_layer_name(&name) {
                     return Err((Self::AddLayer { name, index }, error));
                 }
@@ -740,6 +757,12 @@ impl Operation {
                 Ok((Self::RestoreLayer { layer, index }, EditResult::None))
             }
             Self::RestoreLayer { layer, index } => {
+                if document.layers.len() >= MAX_DOCUMENT_LAYERS {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyLayers,
+                    ));
+                }
                 if index > document.layers.len() {
                     return Err((
                         Self::RestoreLayer { layer, index },
@@ -760,6 +783,30 @@ impl Operation {
                     return Err((
                         Self::RestoreLayer { layer, index },
                         DocumentError::DuplicateStrokeId,
+                    ));
+                }
+
+                let existing_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                let combined_strokes = existing_strokes.checked_add(layer.strokes.len());
+                if combined_strokes.is_none_or(|count| count > MAX_DOCUMENT_STROKES) {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let layer_samples = layer.strokes.iter().try_fold(0_usize, |count, stroke| {
+                    count.checked_add(stroke.samples.len())
+                });
+                let existing_samples = document.total_sample_count();
+                let combined_samples = existing_samples
+                    .zip(layer_samples)
+                    .and_then(|(existing, added)| existing.checked_add(added));
+                if combined_samples
+                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
+                {
+                    return Err((
+                        Self::RestoreLayer { layer, index },
+                        DocumentError::TooManyTotalStrokeSamples,
                     ));
                 }
 
@@ -886,6 +933,31 @@ impl Operation {
                         DocumentError::LayerNotFound,
                     ));
                 };
+                let total_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                if total_strokes >= MAX_DOCUMENT_STROKES {
+                    return Err((
+                        Self::AddStroke {
+                            layer_id,
+                            samples,
+                            brush,
+                        },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let total_samples = document.total_sample_count().unwrap_or(usize::MAX);
+                if total_samples
+                    .checked_add(samples.len())
+                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
+                {
+                    return Err((
+                        Self::AddStroke {
+                            layer_id,
+                            samples,
+                            brush,
+                        },
+                        DocumentError::TooManyTotalStrokeSamples,
+                    ));
+                }
                 let Some(next_id) = document.next_stroke_id.checked_add(1) else {
                     return Err((
                         Self::AddStroke {
@@ -980,6 +1052,31 @@ impl Operation {
                             index,
                         },
                         DocumentError::DuplicateStrokeId,
+                    ));
+                }
+                let total_strokes = document.total_stroke_count().unwrap_or(usize::MAX);
+                if total_strokes >= MAX_DOCUMENT_STROKES {
+                    return Err((
+                        Self::RestoreStroke {
+                            layer_id,
+                            stroke,
+                            index,
+                        },
+                        DocumentError::TooManyStrokes,
+                    ));
+                }
+                let total_samples = document.total_sample_count().unwrap_or(usize::MAX);
+                if total_samples
+                    .checked_add(stroke.samples.len())
+                    .is_none_or(|count| count > MAX_DOCUMENT_TOTAL_SAMPLES)
+                {
+                    return Err((
+                        Self::RestoreStroke {
+                            layer_id,
+                            stroke,
+                            index,
+                        },
+                        DocumentError::TooManyTotalStrokeSamples,
                     ));
                 }
 
