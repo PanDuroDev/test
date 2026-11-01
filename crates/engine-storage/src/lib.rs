@@ -183,6 +183,8 @@ struct StoredDocument {
     schema_version: u16,
     width_px: u32,
     height_px: u32,
+    next_layer_id: u64,
+    next_stroke_id: u64,
     layers: Vec<StoredLayer>,
 }
 
@@ -272,6 +274,8 @@ impl StoredDocument {
             schema_version: SCHEMA_VERSION,
             width_px: snapshot.width_px,
             height_px: snapshot.height_px,
+            next_layer_id: snapshot.next_layer_id,
+            next_stroke_id: snapshot.next_stroke_id,
             layers,
         })
     }
@@ -324,6 +328,8 @@ impl StoredDocument {
         Ok(DocumentSnapshot {
             width_px: self.width_px,
             height_px: self.height_px,
+            next_layer_id: self.next_layer_id,
+            next_stroke_id: self.next_stroke_id,
             layers,
         })
     }
