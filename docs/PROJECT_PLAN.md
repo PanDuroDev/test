@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 مدمج واختبار Windows اليدوي الأساسي أكده المستخدم. PR #20 مدمج بالالتزام `904d0c80271d7371a8474c4c92e2b5248ecc847e`؛ أصبح نموذج Document/Layer/Stroke وسجل Undo/Redo موجودًا في `main`. CI #41255940489 نجح في الوظائف الست، بما فيها 87 اختبارًا لكل من Linux وWindows وmacOS وFormat وClippy وبناء Android FFI وتوليد Kotlin. لا يوجد حتى الآن حفظ ملفات أو recovery أو Renderer إنتاجي أو واجهة رسم مكتملة أو Timeline. يجري تنفيذ Issue #21 لإضافة snapshots متحققة وصيغة `.rasm` ذات إصدار وchecksum؛ كتابة الملفات والحفظ الذري مؤجلة لمهمة لاحقة. لا ندّعي اختبار قلم مخصص أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. PR #18 أكد نموذج النافذة والعرض على Windows يدويًا. PR #20 مدمج: نموذج Document/Layer/Stroke وUndo/Redo. PR #22 مدمج بالالتزام `52e9e118bc826862c1a8e76449c7aa59c8acec55`: snapshots متحققة وصيغة RASM v1 مع JSON schema version وCRC32. CI #41257206578 نجح في الوظائف الست على Linux وWindows وmacOS وFormat وClippy وبناء Android FFI وWindows prototype artifact. لا يوجد حتى الآن واجهة رسم منتجية أو Renderer إنتاجي أو Timeline. يجري تنفيذ Issue #25 لإضافة save/load ذري على filesystem؛ لا ندّعي اكتمال الحفظ حتى نجاح اختبارات الاستبدال على Windows. لا ندّعي اختبار قلم مخصص أو قياسات latency/ذاكرة. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -278,31 +278,41 @@
 
 **حدود المرحلة:** لا يوجد ملف `.rasm` أو serialization أو save/load أو autosave أو crash recovery. snapshot API لا تنفذ I/O؛ التخزين الفعلي يبدأ في المرحلة التالية.
 
-### المرحلة 6B1: snapshots وصيغة ملف .rasm — قيد التنفيذ عبر [Issue #21](https://github.com/PanDuroDev/test/issues/21)
+### المرحلة 6B1: snapshots وصيغة ملف .rasm — مكتملة عبر [Issue #21](https://github.com/PanDuroDev/test/issues/21) و[PR #22](https://github.com/PanDuroDev/test/pull/22)
 
 **فرع التنفيذ:** `storage/versioned-document-format`.
+**التزام الدمج على main:** `52e9e118bc826862c1a8e76449c7aa59c8acec55`.
+**CI:** [#41257206578](https://github.com/PanDuroDev/test/actions/runs/41257206578) — نجحت الوظائف الست.
 
-**النطاق الجاري:**
+**ما أُنجز:**
 - getters لإعدادات `BrushConfig` حتى تحفظ إعدادات الفرشاة وتستعاد عبر constructor المتحقق.
 - `DocumentSnapshot` وطبقات/ضربات/عينات/Brush snapshots عامة مستقلة عن serde وGPU.
 - `Document::snapshot()` و`Document::from_snapshot()` مع التحقق من IDs وduplicates والحدود وبيانات العينات.
-- crate `rasm-engine-storage` لصيغة container ثابتة: magic `RASM`، file version، flags، payload length، CRC32، ثم JSON payload يحمل schema version.
-- رفض الملفات المبتورة، trailing bytes، الملفات الكبيرة، checksum غير المطابق، flags أو versions غير المدعومة، والـ JSON أو المستند غير الصالح.
+- فرض حدود الموارد أيضًا أثناء التعديلات العادية: 2048 طبقة، 100 ألف ضربة، ومليونا sample إجمالًا.
+- crate `rasm-engine-storage` لصيغة container ثابتة: magic `RASM`، file version، flags، payload length، CRC32، ثم JSON payload يحمل schema version مستقلًا.
+- رفض الملفات المبتورة، trailing bytes، payload الأكبر من 256 MiB، checksum غير المطابق، flags أو versions غير المدعومة، والـ JSON أو المستند غير الصالح.
 - Round-trip يحافظ على IDs وترتيب الطبقات وإعدادات الفرش والعينات الأصلية.
 
-**خارج النطاق:** filesystem I/O، الكتابة الذرية، الملفات المؤقتة، autosave، journal وcrash recovery. هذه المرحلة تثبت codec bytes فقط، لا تحفظ ملفًا على القرص.
+**التحقق:** Format وClippy واختبارات Workspace على Linux وWindows وmacOS وبناء Android ARM64 وتوليد Kotlin وWindows prototype artifact، كلها نجحت في CI #41257206578.
 
-**التحقق المطلوب:** round-trip لملف فارغ ومكتمل، corruption/version/length/checksum tests، snapshot invariant tests، وCI كامل على Linux/Windows/macOS. لا توصف المرحلة بأنها مكتملة قبل نجاح جميع الفحوص.
+**حدود المرحلة:** codec يتعامل مع byte buffers فقط. لا يوجد filesystem I/O أو حفظ ذري أو autosave أو journal أو crash recovery. CRC32 يكشف التلف العرضي ولا يوفر حماية تشفيرية ضد التلاعب المتعمد.
 
-### المرحلة 6B2: الكتابة الذرية والاستعادة — لم تبدأ
+### المرحلة 6B2: القراءة والكتابة الذرية لملفات RASM — قيد التنفيذ عبر [Issue #25](https://github.com/PanDuroDev/test/issues/25)
 
-- تنفيذ save/load لمسار محلي على Windows مع سلوك واضح عند وجود ملف سابق.
-- الكتابة إلى temporary file في نفس filesystem، flush/sync، ثم commit ذري متوافق مع Windows.
-- حماية النسخة السابقة من التلف عند فشل الكتابة أو الاستبدال.
-- اختبارات انقطاع/فشل الكتابة وإعادة فتح الملف.
-- تصميم journal/recovery وautosave بعد إثبات سياسة commit.
+**فرع التنفيذ:** `storage/atomic-file-save-load`.
 
-**معايير القبول:** حفظ وفتح من filesystem، اختبارات round-trip، فشل الكتابة دون إفساد النسخة السابقة، وإثبات السلوك على Windows فعلي.
+**النطاق الجاري:**
+- `save_atomic(path, document)` و`load(path)` فوق codec v1.
+- رفض الملفات الأكبر من الحد قبل قراءتها، مع إعادة التحقق من الحجم أثناء القراءة.
+- إنشاء temporary file فريد في مجلد الوجهة نفسه باستخدام `create_new`.
+- كتابة كاملة ثم flush وsync للملف قبل commit.
+- Windows: استبدال الملف عبر `MoveFileExW` مع replace-existing وwrite-through.
+- Unix: `rename` ذري داخل filesystem نفسه، ثم sync لمجلد الوجهة.
+- اختبار فشل commit بحقن الخطأ للتأكد من بقاء النسخة السابقة وحذف الملف المؤقت.
+
+**التحفظات:** نجاح rename/replace يضمن ذرية الظهور وفق سلوك filesystem المستخدم، لكنه لا يمثل وعدًا مطلقًا ضد فقد الطاقة أو عيوب التخزين. فشل directory sync بعد commit يعني أن الملف الجديد قد أصبح ظاهرًا بالفعل، لذلك يجب إظهار هذه الحالة كخطأ بعد commit لا كأن الحفظ لم يحدث.
+
+**التحقق المطلوب:** اختبارات save/load وreplace وfailed commit وtemp cleanup، ثم CI كامل على Linux/Windows/macOS وFormat وClippy. لا تعتبر المرحلة مكتملة قبل فحص نتائج Windows تحديدًا.
 
 ### المرحلة 7: أول Canvas Desktop قابل للاستخدام
 
@@ -434,7 +444,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، PR #18 وPR #20 مدمجان، وIssue #17 و#19 مغلقان. نموذج المستند وسجل Undo/Redo وsnapshot import/export موجود في main. يجري تنفيذ Issue #21 على فرع `storage/versioned-document-format` لإضافة صيغة `.rasm` وcodec متحقق؛ filesystem save/atomic replace ما زال خارج main. تجربة FFI Android عبر PR #14/#15 محفوظة وليست هدف المنتج. لا تحذفها أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، PR #18 وPR #20 مدمجان، وIssue #17 و#19 مغلقان. نموذج المستند وسجل Undo/Redo وsnapshot import/export موجود في main. PR #22 مدمج وIssue #21 مغلق؛ صيغة RASM v1 وsnapshot API موجودان في main. يجري تنفيذ Issue #25 على فرع `storage/atomic-file-save-load` لإضافة filesystem save/load ذري؛ لا تخلط بين codec bytes والحفظ الفعلي. تجربة FFI Android عبر PR #14/#15 محفوظة وليست هدف المنتج. لا تحذفها أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -460,3 +470,6 @@ target/renderer-spike.png
 - 2026-11-01: فُتح Issue #19 وبدأ فرع `core/document-model-undo-redo` لتنفيذ المرحلة 6A: Document/Layer/Stroke model وbounded command-based Undo/Redo؛ serialization والحفظ مؤجلان للمرحلة 6B.
 - 2026-11-01: دمج PR #20 بالالتزام `904d0c80271d7371a8474c4c92e2b5248ecc847e` وإغلاق Issue #19. اجتاز CI #41255940489 جميع الوظائف الست، بما فيها 87 اختبارًا على كل من Linux وWindows وmacOS، Format وClippy وبناء Android ARM64/Kotlin bindings وWindows artifact.
 - 2026-11-01: فتح Issue #21 وبدء فرع `storage/versioned-document-format` لتنفيذ DocumentSnapshot validated API وversioned `.rasm` container مع CRC32 وJSON schema v1. لم يبدأ filesystem I/O أو atomic save بعد.
+
+- 2026-11-01: دمج PR #22 بالالتزام `52e9e118bc826862c1a8e76449c7aa59c8acec55` وإغلاق Issue #21. نجحت وظائف CI الست في التشغيل #41257206578؛ أصبحت snapshots المتحققة وصيغة RASM v1 متاحتين في main.
+- 2026-11-01: فتح Issue #25 وبدء فرع `storage/atomic-file-save-load` لتنفيذ save/load ذري باستخدام temporary file في مجلد الوجهة، مع اختبارات حماية الملف السابق عند فشل commit.
