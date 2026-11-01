@@ -763,8 +763,8 @@ mod tests {
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
     use super::{
-        DEFAULT_HISTORY_LIMIT, Document, DocumentError, Edit, EditResult, History, LayerId,
-        MAX_LAYER_NAME_BYTES, MAX_STROKE_SAMPLES, StrokeId,
+        DEFAULT_HISTORY_LIMIT, Document, DocumentError, Edit, EditResult, History, Layer, LayerId,
+        MAX_LAYER_NAME_BYTES, MAX_STROKE_SAMPLES, Stroke, StrokeId,
     };
 
     fn document() -> Document {
