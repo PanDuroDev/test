@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     mem::size_of,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
@@ -306,7 +306,6 @@ impl InputState {
         match self.canvas.undo() {
             Ok(()) => {
                 self.reconcile_active_layer();
-                self.prune_stroke_colors();
                 true
             }
             Err(error) => {
@@ -323,7 +322,6 @@ impl InputState {
         match self.canvas.redo() {
             Ok(()) => {
                 self.reconcile_active_layer();
-                self.prune_stroke_colors();
                 true
             }
             Err(error) => {
@@ -340,18 +338,6 @@ impl InputState {
                 self.title_dirty = true;
             }
         }
-    }
-
-    fn prune_stroke_colors(&mut self) {
-        let retained = self
-            .canvas
-            .document()
-            .layers()
-            .iter()
-            .flat_map(|layer| layer.strokes())
-            .map(|stroke| stroke.id().get())
-            .collect::<HashSet<_>>();
-        self.stroke_colors.retain(|id, _| retained.contains(id));
     }
 
     fn pointer_over_layer_panel(&self, size: PhysicalSize<u32>) -> bool {
@@ -436,7 +422,6 @@ impl InputState {
                                 let index = old_index.min(layers.len().saturating_sub(1));
                                 self.active_layer_id = layers[index].id();
                             }
-                            self.prune_stroke_colors();
                             self.reconcile_active_layer();
                             self.title_dirty = true;
                         }
@@ -1334,6 +1319,48 @@ mod tests {
             input.canvas.document().layers()[0].strokes().len(),
             initial + 1
         );
+    }
+
+
+    #[test]
+    fn layer_panel_routes_drawing_and_visibility_through_the_selected_layer() {
+        let mut input = InputState::with_demo_stroke(960.0, 640.0);
+        let window_size = PhysicalSize::new(960, 640);
+        let original_layer = input.active_layer_id;
+
+        input.update_mouse_position(PhysicalPosition::new(220.0, 28.0));
+        assert!(input.handle_layer_panel_click(window_size));
+        let selected_layer = input.active_layer_id;
+        assert_ne!(selected_layer, original_layer);
+
+        input.update_mouse_position(PhysicalPosition::new(480.0, 320.0));
+        input.begin_mouse();
+        input.update_mouse_position(PhysicalPosition::new(520.0, 340.0));
+        input.end_mouse();
+        assert_eq!(
+            input.canvas.document().layer(selected_layer).unwrap().strokes().len(),
+            1
+        );
+
+        input.update_mouse_position(PhysicalPosition::new(190.0, 58.0));
+        assert!(input.handle_layer_panel_click(window_size));
+        assert!(!input.canvas.document().layer(selected_layer).unwrap().is_visible());
+
+        input.update_mouse_position(PhysicalPosition::new(230.0, 58.0));
+        assert!(input.handle_layer_panel_click(window_size));
+        assert!(input.canvas.document().layer(selected_layer).is_none());
+        assert_eq!(input.active_layer_id, original_layer);
+
+        assert!(input.undo());
+        assert!(input.canvas.document().layer(selected_layer).is_some());
+        assert!(input.undo());
+        assert!(input.canvas.document().layer(selected_layer).unwrap().is_visible());
+        assert!(input.undo());
+        assert!(input.canvas.document().layer(selected_layer).unwrap().strokes().is_empty());
+        assert!(input.undo());
+        assert!(input.canvas.document().layer(selected_layer).is_none());
+        assert!(input.redo());
+        assert!(input.canvas.document().layer(selected_layer).is_some());
     }
 
     #[test]
