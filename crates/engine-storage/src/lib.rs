@@ -775,9 +775,7 @@ mod file_tests {
 
     #[test]
     fn destination_must_have_a_file_name() {
-        let directory = tempfile::tempdir().expect("temp dir");
         let result = write_atomic_bytes(Path::new(""), b"bytes", |_source, _destination| Ok(()));
         assert!(matches!(result, Err(FileStorageError::Io(_))));
-        let _ = directory;
     }
 }
