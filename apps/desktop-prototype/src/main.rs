@@ -1076,7 +1076,7 @@ impl App {
                         ))
                         .set_buttons(rfd::MessageButtons::YesNo)
                         .show();
-                    if !confirmed {
+                    if confirmed != rfd::MessageDialogResult::Yes {
                         return;
                     }
                 }
