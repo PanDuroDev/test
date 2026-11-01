@@ -393,6 +393,7 @@ impl CanvasDocument {
         layer.strokes().last().map(|stroke| stroke.id().get())
     }
 
+    #[cfg(test)]
     pub fn last_stroke_id_on(&self, layer_id: LayerId) -> Option<u64> {
         self.document
             .layer(layer_id)?
