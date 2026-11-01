@@ -14,3 +14,4 @@ serde_json.workspace = true
 
 [dev-dependencies]
 glam.workspace = true
+rasm-engine-ink = { path = "../engine-ink" }
