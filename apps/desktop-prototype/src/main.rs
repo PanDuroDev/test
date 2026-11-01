@@ -33,6 +33,12 @@ const WINDOW_WIDTH: f64 = 960.0;
 const WINDOW_HEIGHT: f64 = 640.0;
 const MAX_TOTAL_VERTICES: usize = 2_000_000;
 
+#[derive(Debug, Clone, Copy)]
+struct LayerPanelView {
+    active_layer: LayerId,
+    scroll_offset: usize,
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -718,8 +724,7 @@ impl GpuRenderer {
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
         stroke_colors: &HashMap<u64, [f32; 4]>,
-        active_layer_id: LayerId,
-        panel_scroll: usize,
+        layer_panel: LayerPanelView,
         viewport: CanvasViewport,
     ) -> (wgpu::Buffer, wgpu::Buffer, u32, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
@@ -757,10 +762,10 @@ impl GpuRenderer {
         let mut panel_indices = Vec::new();
         layer_panel::append_geometry(
             document,
-            active_layer_id,
+            layer_panel.active_layer,
             self.config.width,
             self.config.height,
-            panel_scroll,
+            layer_panel.scroll_offset,
             &mut panel_vertices,
             &mut panel_indices,
         );
@@ -820,8 +825,7 @@ impl GpuRenderer {
         active_samples: Option<&[StrokeSample]>,
         brush: BrushSettings,
         stroke_colors: &HashMap<u64, [f32; 4]>,
-        active_layer_id: LayerId,
-        panel_scroll: usize,
+        layer_panel: LayerPanelView,
         viewport: CanvasViewport,
     ) {
         if self.config.width == 0 || self.config.height == 0 {
@@ -1006,8 +1010,10 @@ impl ApplicationHandler<AppEvent> for App {
                         input.active_samples(),
                         input.brush,
                         &input.stroke_colors,
-                        input.active_layer_id,
-                        input.panel_scroll,
+                        LayerPanelView {
+                            active_layer: input.active_layer_id,
+                            scroll_offset: input.panel_scroll,
+                        },
                         input.canvas.viewport(),
                     );
                     if let Some(error) = input.take_error() {
