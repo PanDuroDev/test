@@ -806,7 +806,12 @@ impl GpuRenderer {
                 contents: bytemuck::cast_slice(&indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
-        (vertex_buffer, index_buffer, canvas_index_count, panel_index_count)
+        (
+            vertex_buffer,
+            index_buffer,
+            canvas_index_count,
+            panel_index_count,
+        )
     }
 
     fn render(
@@ -851,8 +856,8 @@ impl GpuRenderer {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let (vertex_buffer, index_buffer, canvas_index_count, panel_index_count) =
-            self.make_mesh_buffers(
+        let (vertex_buffer, index_buffer, canvas_index_count, panel_index_count) = self
+            .make_mesh_buffers(
                 document,
                 active_samples,
                 brush,
@@ -1341,7 +1346,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn layer_panel_routes_drawing_and_visibility_through_the_selected_layer() {
         let mut input = InputState::with_demo_stroke(960.0, 640.0);
@@ -1358,13 +1362,26 @@ mod tests {
         input.update_mouse_position(PhysicalPosition::new(520.0, 340.0));
         input.end_mouse();
         assert_eq!(
-            input.canvas.document().layer(selected_layer).unwrap().strokes().len(),
+            input
+                .canvas
+                .document()
+                .layer(selected_layer)
+                .unwrap()
+                .strokes()
+                .len(),
             1
         );
 
         input.update_mouse_position(PhysicalPosition::new(190.0, 58.0));
         assert!(input.handle_layer_panel_click(window_size));
-        assert!(!input.canvas.document().layer(selected_layer).unwrap().is_visible());
+        assert!(
+            !input
+                .canvas
+                .document()
+                .layer(selected_layer)
+                .unwrap()
+                .is_visible()
+        );
 
         input.update_mouse_position(PhysicalPosition::new(230.0, 58.0));
         assert!(input.handle_layer_panel_click(window_size));
@@ -1374,9 +1391,24 @@ mod tests {
         assert!(input.undo());
         assert!(input.canvas.document().layer(selected_layer).is_some());
         assert!(input.undo());
-        assert!(input.canvas.document().layer(selected_layer).unwrap().is_visible());
+        assert!(
+            input
+                .canvas
+                .document()
+                .layer(selected_layer)
+                .unwrap()
+                .is_visible()
+        );
         assert!(input.undo());
-        assert!(input.canvas.document().layer(selected_layer).unwrap().strokes().is_empty());
+        assert!(
+            input
+                .canvas
+                .document()
+                .layer(selected_layer)
+                .unwrap()
+                .strokes()
+                .is_empty()
+        );
         assert!(input.undo());
         assert!(input.canvas.document().layer(selected_layer).is_none());
         assert!(input.redo());
