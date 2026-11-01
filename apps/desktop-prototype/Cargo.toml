@@ -15,6 +15,7 @@ rfd = "=0.15.4"
 rasm-engine-core = { path = "../../crates/engine-core" }
 rasm-engine-document = { path = "../../crates/engine-document" }
 rasm-engine-ink = { path = "../../crates/engine-ink" }
+rasm-engine-storage = { path = "../../crates/engine-storage" }
 wgpu = "=30.0.0"
 winit = "=0.30.13"
 
