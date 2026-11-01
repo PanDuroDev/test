@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية.** آخر ما دُمج في main هو PR #35: حجم الفرشاة (1–128px)، الممحاة الاختصارية، وأربعة ألوان، بعد PR #34 الذي أصلح حدود اللوحة وأضاف cache لهندسة الضربات. يحتوي النموذج المكتبي الحالي على WGPU surface وDocument/Layer/Stroke وUndo/Redo وربط إدخال الماوس وWindows pen بالمستند وviewport pan/zoom. PR #36 على الفرع `desktop/layers-panel` ينفذ Issue #32: لوحة طبقات، اختيار الطبقة النشطة، الإضافة والحذف وتبديل الظهور، وربط الرسم بالطبقة المحددة. التغييرات والاختبارات موجودة في الفرع، لكن اكتمالها مشروط بنجاح وظائف CI الست والدمج؛ لا تُعامل كجزء من main قبل ذلك. Issue #33 هو التالي لربط حوارات فتح/حفظ RASM بواجهة Desktop. لا يوجد Renderer إنتاجي أو Timeline أو Stage 2.5D أو autosave/crash recovery. لم تُثبت بعد قياسات latency/الذاكرة أو اختبار قلم فعلي حديث. Android/Kotlin FFI محفوظ كتجربة تكامل مستقلة وليس هدف المنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية.** آخر تغيير مكتمل ومدمج هو PR #36، الذي أغلق Issue #32 وأضاف لوحة طبقات WGPU مع الإضافة والاختيار والإخفاء والحذف والتمرير وربط الرسم بالطبقة النشطة وUndo/Redo. نجحت وظائف CI الست في التشغيل [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، بما فيها Windows/Linux/macOS tests وFormat/Clippy وAndroid ARM64 FFI ورفع Windows prototype artifact (ID `13094053903`). لا يزال الموجود نموذج Desktop prototype وليس تطبيق المنتج أو Renderer إنتاجي. Issue #33 هو التالي: حوارات فتح/حفظ RASM، ويجب أن تشمل حفظ لون كل Stroke؛ اللون حاليًا مخزن في ذاكرة prototype فقط ولا يدخل في Document أو RASM v1، لذلك فتح/حفظ دون توسيع التمثيل سيفقد ألوان الرسم. لا يوجد Timeline أو Stage 2.5D أو autosave/crash recovery. لم تُثبت بعد قياسات latency/الذاكرة أو اختبار قلم فعلي حديث. Android/Kotlin FFI محفوظ كتجربة تكامل مستقلة وليس هدف المنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -385,7 +385,7 @@
 **الحدود:** لا يوجد دوران للوحة ولا لوحة أدوات ولا إدارة طبقات ولا «fit to selection»؛ حدود التكبير ثابتة بين 0.25× و8×.
 
 
-### المرحلة 7B2: لوحة الطبقات وربط الإدخال بالطبقة النشطة — PR #36 قيد المراجعة
+### المرحلة 7B2: لوحة الطبقات وربط الإدخال بالطبقة النشطة — مكتملة ومدمجة في PR #36
 
 - Issue: [#32](https://github.com/PanDuroDev/test/issues/32).
 - PR: [#36](https://github.com/PanDuroDev/test/pull/36).
@@ -410,7 +410,7 @@
 - Hit testing لأزرار Add/Select/Visibility/Delete، والتمرير، والتحقق من هندسة اللوحة وفهارسها.
 - اختبار تكامل يمر عبر إضافة طبقة ورسم ضربة عليها وإخفائها وحذفها ثم Undo/Redo.
 
-**الحدود:** هذا prototype UI وليس التصميم النهائي. لا توجد إعادة تسمية أو ترتيب بالسحب أو مجموعات أو تحكم opacity. Renderer لا يطبق opacity جزئية أو alpha compositing كاملًا، والممحاة ما زالت shortcut بلون الخلفية. لم يُختبر قلم فعلي أو benchmark. لا توصف المرحلة بأنها مكتملة حتى تنجح وظائف CI الست ويُدمج PR.
+**النتيجة والتحقق:** دُمج PR #36 في `main` بالالتزام `0bc503a4fe72f0549d4da2d907c3b453ed871c3f` وأُغلق Issue #32. نجحت وظائف CI الست في [التشغيل #41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، بما فيها Windows prototype artifact. هذا prototype UI وليس التصميم النهائي. لا توجد إعادة تسمية أو ترتيب بالسحب أو مجموعات أو تحكم opacity. Renderer لا يطبق opacity جزئية أو alpha compositing كاملًا، والممحاة ما زالت shortcut بلون الخلفية. لم يُختبر قلم فعلي أو benchmark.
 
 **التالي:** [Issue #33](https://github.com/PanDuroDev/test/issues/33) لربط حوارات Open/Save بواجهة التطبيق واستخدام `engine-storage` الموجود؛ لا تُعد تنفيذ codec أو atomic filesystem I/O.
 
@@ -520,7 +520,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. الحالة الحالية: آخر ما دُمج في main هو PR #35. نموذج Windows Desktop يحتوي winit/WGPU prototype وDocument/Layer/Stroke وHistory وviewport pan/zoom وأدوات الفرش الأساسية. PR #36 على الفرع `desktop/layers-panel` ينفذ Issue #32 لإضافة واجهة إدارة الطبقات وربط الرسم بالطبقة النشطة؛ افحص CI وحالة الدمج قبل اعتبار ذلك موجودًا في main. Issue #33 هو التالي لحوارات فتح/حفظ RASM. لا يوجد Renderer إنتاجي أو Timeline أو Stage 2.5D أو crash recovery، ولم تُثبت قياسات latency/ذاكرة أو تجربة قلم فعلي حديثة. تجربة Android/Kotlin FFI محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
+6. الحالة الحالية: PR #36 مدمج في `main` (merge commit `0bc503a4fe72f0549d4da2d907c3b453ed871c3f`) وأغلق Issue #32. أصبح نموذج Windows Desktop يحتوي winit/WGPU وDocument/Layer/Stroke وHistory وviewport pan/zoom وأدوات الفرش ولوحة طبقات تتيح الإضافة والاختيار والإخفاء والحذف وربط الرسم بالطبقة النشطة. نجحت وظائف CI الست في [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، ومنها Windows artifact `rasm-desktop-prototype-windows-x64`. Issue #33 هو الخطوة التالية لفتح/حفظ RASM؛ أُبلغت الملاحظة أن ألوان الضربات غير مخزنة بعد في Document/RASM v1 ويجب أن يشمل العمل حفظها دون فقد. لا يوجد Renderer إنتاجي أو Timeline أو Stage 2.5D أو crash recovery، ولم تُثبت قياسات latency/ذاكرة أو تجربة قلم فعلي حديثة. تجربة Android/Kotlin FFI محفوظة كاختبار تكامل منفصل ولا تُحذف أو تُجعل شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -557,3 +557,5 @@ target/renderer-spike.png
 - 2026-11-01: فُتح Issue #31 وفرع `desktop/brush-tools` لأدوات الفرشاة: حجم (1–128px عبر `[` و`]`)، ممحاة (`E`)، ولوحة أربعة ألوان (`1`–`4`)، مع لون لكل ضربة في العارض يُحفظ في prototype بمفتاح `StrokeId` دون تغيير صيغة RASM. نجح CI في جميع وظائفه ([CI 41267527428](https://github.com/PanDuroDev/test/actions/runs/41267527428)) والـPR رقم #35. الممحاة ترسم بلون خلفية اللوحة (shortcut) حتى يُضاف دمج الطبقات بالشفافية، ولا توجد بعد حلقة معاينة حجم تحت المؤشر.
 
 - 2026-11-01: فتح PR #36 على الفرع `desktop/layers-panel` لإكمال Issue #32. أضيفت لوحة طبقات WGPU مستقلة عن أطر UI ثقيلة، وأوامر CanvasDocument لعمليات الطبقات عبر History، وربط رسم الماوس بالطبقة المحددة، واختبارات headless للتفاعل والتراجع والإعادة. PR ما زال مفتوحًا؛ لا تسجل المرحلة مكتملة قبل نجاح وظائف CI الست والدمج. Issue #33 هو العمل التالي لربط فتح/حفظ RASM بواجهة Desktop.
+
+- 2026-11-01: دُمج PR #36 بالـSquash في `main` (commit `0bc503a4fe72f0549d4da2d907c3b453ed871c3f`) وأُغلق Issue #32. نجحت وظائف CI الست في [#41334018329](https://github.com/PanDuroDev/test/actions/runs/41334018329)، ونجح بناء ورفع `rasm-desktop-prototype-windows-x64` (artifact ID `13094053903`). العمل التالي Issue #33. قبل ربط الحفظ/الفتح يجب جعل لون كل Stroke جزءًا محفوظًا؛ حاليًا الألوان موجودة فقط في `HashMap` داخل prototype ولا يحفظها RASM v1.
