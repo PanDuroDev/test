@@ -277,6 +277,15 @@ impl InputState {
             .ok_or_else(|| "Open failed: project contains no layers".to_owned())?;
 
         // Replace only after decoding and all document validation have succeeded.
+        self.active_mouse_samples = None;
+        self.mouse_epoch = None;
+        self.active_pen_id = None;
+        self.active_pen_samples.clear();
+        self.pan_anchor = None;
+        #[cfg(target_os = "windows")]
+        {
+            self.last_pen_axes = None;
+        }
         self.canvas.replace_document(document);
         self.active_layer_id = active_layer;
         self.panel_scroll = 0;
@@ -286,7 +295,13 @@ impl InputState {
         Ok(())
     }
 
-    fn save_project(&mut self, path: PathBuf) -> Result<(), String> {
+    fn save_project(&mut self, mut path: PathBuf) -> Result<(), String> {
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rasm"))
+        {
+            path.set_extension("rasm");
+        }
         rasm_engine_storage::save_atomic(&path, self.canvas.document())
             .map_err(|error| format!("Save failed: {error}"))?;
         self.current_path = Some(path.clone());
