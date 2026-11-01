@@ -162,6 +162,7 @@ impl InputState {
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn sample_from_screen(
         &self,
         screen_position: DVec2,
