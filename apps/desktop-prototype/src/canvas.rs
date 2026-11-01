@@ -2,7 +2,9 @@
 
 use glam::DVec2;
 use rasm_engine_core::transform::ViewportTransform;
-use rasm_engine_document::{Document, DocumentError, Edit, EditResult, History, LayerId};
+use rasm_engine_document::{
+    Document, DocumentError, Edit, EditResult, History, LayerId, StrokeColor,
+};
 use rasm_engine_ink::{BrushConfig, StrokeSample};
 
 /// Initial logical canvas size for the desktop prototype.
@@ -233,6 +235,13 @@ impl CanvasDocument {
         &self.document
     }
 
+    /// Replaces the project document and starts a fresh editing history.
+    pub fn replace_document(&mut self, document: Document) {
+        self.document = document;
+        self.history.clear();
+        self.reset_view();
+    }
+
     /// Adds a visible layer at the top of the stack and records it in history.
     pub fn add_layer(&mut self, name: impl Into<String>) -> Result<LayerId, DocumentError> {
         match self
@@ -342,15 +351,27 @@ impl CanvasDocument {
             .last()
             .expect("a document always contains one layer")
             .id();
-        self.commit_stroke_to(layer_id, samples, brush).map(|_| ())
+        self.commit_stroke_to_with_color(layer_id, samples, brush, StrokeColor::DEFAULT)
+            .map(|_| ())
     }
 
-    /// Commits a stroke to a specific layer and returns its stable identifier.
+    /// Commits a stroke to a specific layer using the legacy default colour.
     pub fn commit_stroke_to(
         &mut self,
         layer_id: LayerId,
         samples: Vec<StrokeSample>,
         brush: BrushConfig,
+    ) -> Result<Option<u64>, DocumentError> {
+        self.commit_stroke_to_with_color(layer_id, samples, brush, StrokeColor::DEFAULT)
+    }
+
+    /// Commits a coloured stroke to a specific layer and returns its stable identifier.
+    pub fn commit_stroke_to_with_color(
+        &mut self,
+        layer_id: LayerId,
+        samples: Vec<StrokeSample>,
+        brush: BrushConfig,
+        color: StrokeColor,
     ) -> Result<Option<u64>, DocumentError> {
         if samples.is_empty() {
             return Ok(None);
@@ -358,7 +379,7 @@ impl CanvasDocument {
 
         match self.history.execute(
             &mut self.document,
-            Edit::add_stroke(layer_id, samples, brush),
+            Edit::add_stroke_with_color(layer_id, samples, brush, color),
         )? {
             EditResult::StrokeAdded(id) => Ok(Some(id.get())),
             EditResult::None | EditResult::LayerAdded(_) => {
@@ -786,6 +807,51 @@ mod tests {
             Err(DocumentError::CannotRemoveLastLayer)
         );
         assert_eq!(canvas.document().layers().len(), 1);
+    }
+
+
+    #[test]
+    fn replacing_document_clears_history_and_refits_viewport() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        canvas
+            .add_layer("Temporary")
+            .expect("create temporary history entry");
+        canvas.zoom_at(2.0, DVec2::new(480.0, 320.0));
+        let replacement = Document::new(800, 600).expect("replacement");
+
+        canvas.replace_document(replacement.clone());
+
+        assert_eq!(canvas.document(), &replacement);
+        assert!(!canvas.can_undo());
+        assert!(!canvas.can_redo());
+        assert_eq!(
+            canvas.viewport().transform(),
+            CanvasViewport::fit(800, 600, 960, 640)
+                .expect("replacement viewport")
+                .transform()
+        );
+    }
+
+    #[test]
+    fn explicit_stroke_colour_is_stored_in_document_and_undo_history() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let layer = canvas.document().layers()[0].id();
+        let colour = StrokeColor::new([0.25, 0.5, 0.75, 1.0]).expect("colour");
+
+        canvas
+            .commit_stroke_to_with_color(
+                layer,
+                sample_stroke(),
+                BrushConfig::default(),
+                colour,
+            )
+            .expect("commit coloured stroke");
+
+        assert_eq!(canvas.document().layer(layer).unwrap().strokes()[0].color(), colour);
+        canvas.undo().expect("undo");
+        assert!(canvas.document().layer(layer).unwrap().strokes().is_empty());
+        canvas.redo().expect("redo");
+        assert_eq!(canvas.document().layer(layer).unwrap().strokes()[0].color(), colour);
     }
 
     #[test]
