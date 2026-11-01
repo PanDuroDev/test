@@ -755,7 +755,9 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 mod file_tests {
     use super::{FileStorageError, load, save_atomic, write_atomic_bytes};
     use crate::encode;
-    use rasm_engine_document::{Document, Edit, History};
+    use glam::DVec2;
+    use rasm_engine_document::{Document, Edit, History, StrokeColor};
+    use rasm_engine_ink::{BrushConfig, StrokeSample};
     use std::fs;
     use std::io;
     use std::path::Path;
@@ -767,6 +769,21 @@ mod file_tests {
         history
             .execute(&mut document, Edit::rename_layer(layer, "Saved"))
             .expect("rename");
+        let samples = vec![
+            StrokeSample::new(DVec2::new(12.5, 23.75), Some(0.35), 10).expect("sample"),
+            StrokeSample::new(DVec2::new(42.0, 61.25), Some(0.9), 20).expect("sample"),
+        ];
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke_with_color(
+                    layer,
+                    samples,
+                    BrushConfig::default(),
+                    StrokeColor::new([0.2, 0.45, 0.8, 0.95]).expect("colour"),
+                ),
+            )
+            .expect("add coloured stroke");
         document
     }
 
