@@ -850,7 +850,10 @@ mod tests {
         canvas.undo().expect("undo");
         assert!(canvas.document().layer(layer).unwrap().strokes().is_empty());
         canvas.redo().expect("redo");
-        assert_eq!(canvas.document().layer(layer).unwrap().strokes()[0].color(), colour);
+        assert_eq!(
+            canvas.document().layer(layer).unwrap().strokes()[0].color(),
+            colour
+        );
     }
 
     #[test]
