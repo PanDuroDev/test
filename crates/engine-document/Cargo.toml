@@ -1,0 +1,13 @@
+[package]
+name = "rasm-engine-document"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Platform-independent document, layer, stroke, and edit-history model for Rasm Studio"
+
+[dependencies]
+rasm-engine-ink = { path = "../engine-ink" }
+
+[dev-dependencies]
+glam.workspace = true
