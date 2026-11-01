@@ -194,7 +194,7 @@ C_o=C_s+C_d(1-\alpha_s)
 
 ### 5.5 حالة دمج Desktop الحالية
 
-ينفذ [PR #28](https://github.com/PanDuroDev/test/pull/28) Issue #27 على الفرع `desktop/document-backed-canvas`، ويضيف طبقة حالة Desktop تستعمل نموذج المحرك بدل الاحتفاظ بالضربات المكتملة في مخزن مؤقت تابع للنافذة. نجح [CI #41260460992](https://github.com/PanDuroDev/test/actions/runs/41260460992) في الوظائف الست بما فيها Windows/Linux/macOS وFormat/Clippy وAndroid FFI وبناء Windows prototype artifact. PR بانتظار الدمج.
+دُمج [PR #28](https://github.com/PanDuroDev/test/pull/28) وأُغلق Issue #27 بالالتزام `5f39d46c082aac621d91276f831c6d7e07e36fe8`. يضيف التنفيذ طبقة حالة Desktop تستعمل نموذج المحرك بدل الاحتفاظ بالضربات المكتملة في مخزن مؤقت تابع للنافذة. نجح [CI #41260460992](https://github.com/PanDuroDev/test/actions/runs/41260460992) و[CI #41260977695](https://github.com/PanDuroDev/test/actions/runs/41260977695) في الوظائف الست بما فيها Windows/Linux/macOS وFormat/Clippy وAndroid FFI وبناء Windows prototype artifact.
 
 - `CanvasDocument` يملك `Document` و`History` و`CanvasViewport`. حجم المستند الابتدائي 1920×1080، بينما حجم نافذة العرض يتغير مستقلًا.
 - `CanvasViewport` يستخدم `ViewportTransform` لملاءمة المستند داخل مساحة النافذة مع الحفاظ على نسبة الأبعاد. المساحة المتبقية تصبح letterbox ولا تقبل بدء ضربة جديدة.
