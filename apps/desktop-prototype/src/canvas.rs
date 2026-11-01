@@ -2,7 +2,7 @@
 
 use glam::DVec2;
 use rasm_engine_core::transform::ViewportTransform;
-use rasm_engine_document::{Document, DocumentError, Edit, History};
+use rasm_engine_document::{Document, DocumentError, Edit, EditResult, History, LayerId};
 use rasm_engine_ink::{BrushConfig, StrokeSample};
 
 /// Initial logical canvas size for the desktop prototype.
@@ -233,6 +233,40 @@ impl CanvasDocument {
         &self.document
     }
 
+    /// Adds a visible layer at the top of the stack and records it in history.
+    pub fn add_layer(&mut self, name: impl Into<String>) -> Result<LayerId, DocumentError> {
+        match self.history.execute(&mut self.document, Edit::add_layer(name))? {
+            EditResult::LayerAdded(id) => Ok(id),
+            EditResult::None | EditResult::StrokeAdded(_) => {
+                unreachable!("adding a layer must return its new identifier")
+            }
+        }
+    }
+
+    /// Changes layer visibility as an undoable document edit.
+    pub fn set_layer_visibility(
+        &mut self,
+        id: LayerId,
+        visible: bool,
+    ) -> Result<(), DocumentError> {
+        let layer = self.document.layer(id).ok_or(DocumentError::LayerNotFound)?;
+        if layer.is_visible() == visible {
+            return Ok(());
+        }
+        self.history.execute(
+            &mut self.document,
+            Edit::set_layer_visibility(id, visible),
+        )?;
+        Ok(())
+    }
+
+    /// Removes a layer through the document history, preserving undo support.
+    pub fn remove_layer(&mut self, id: LayerId) -> Result<(), DocumentError> {
+        self.history
+            .execute(&mut self.document, Edit::remove_layer(id))?;
+        Ok(())
+    }
+
     pub const fn viewport(&self) -> CanvasViewport {
         self.viewport
     }
@@ -298,20 +332,35 @@ impl CanvasDocument {
         samples: Vec<StrokeSample>,
         brush: BrushConfig,
     ) -> Result<(), DocumentError> {
-        if samples.is_empty() {
-            return Ok(());
-        }
         let layer_id = self
             .document
             .layers()
             .last()
             .expect("a document always contains one layer")
             .id();
-        self.history.execute(
+        self.commit_stroke_to(layer_id, samples, brush).map(|_| ())
+    }
+
+    /// Commits a stroke to a specific layer and returns its stable identifier.
+    pub fn commit_stroke_to(
+        &mut self,
+        layer_id: LayerId,
+        samples: Vec<StrokeSample>,
+        brush: BrushConfig,
+    ) -> Result<Option<u64>, DocumentError> {
+        if samples.is_empty() {
+            return Ok(None);
+        }
+
+        match self.history.execute(
             &mut self.document,
             Edit::add_stroke(layer_id, samples, brush),
-        )?;
-        Ok(())
+        )? {
+            EditResult::StrokeAdded(id) => Ok(Some(id.get())),
+            EditResult::None | EditResult::LayerAdded(_) => {
+                unreachable!("adding a stroke must return its new identifier")
+            }
+        }
     }
 
     pub fn undo(&mut self) -> Result<(), DocumentError> {
@@ -338,6 +387,14 @@ impl CanvasDocument {
     pub fn last_stroke_id(&self) -> Option<u64> {
         let layer = self.document.layers().last()?;
         layer.strokes().last().map(|stroke| stroke.id().get())
+    }
+
+    pub fn last_stroke_id_on(&self, layer_id: LayerId) -> Option<u64> {
+        self.document
+            .layer(layer_id)?
+            .strokes()
+            .last()
+            .map(|stroke| stroke.id().get())
     }
 }
 
@@ -439,6 +496,7 @@ mod tests {
         BRUSH_RADIUS_STEP, BrushSettings, CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT,
         DOCUMENT_WIDTH, ERASER_COLOR, MAX_BRUSH_RADIUS, MIN_BRUSH_RADIUS, PALETTE, ViewState,
     };
+    use rasm_engine_document::DocumentError;
     use glam::DVec2;
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
@@ -647,6 +705,61 @@ mod tests {
             .commit_stroke(sample_stroke(), BrushSettings::default().brush())
             .expect("committed stroke");
         assert!(canvas.last_stroke_id().is_some());
+    }
+
+
+    #[test]
+    fn selected_layer_receives_strokes_and_history_restores_them() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let original = canvas.document().layers()[0].id();
+        let selected = canvas.add_layer("Sketch").expect("new layer");
+
+        let stroke_id = canvas
+            .commit_stroke_to(selected, sample_stroke(), BrushConfig::default())
+            .expect("commit to selected layer")
+            .expect("non-empty stroke");
+        assert_eq!(canvas.last_stroke_id_on(selected), Some(stroke_id));
+        assert!(canvas.document().layer(original).unwrap().strokes().is_empty());
+        assert_eq!(canvas.document().layer(selected).unwrap().strokes().len(), 1);
+
+        canvas.undo().expect("undo stroke");
+        assert!(canvas.document().layer(selected).unwrap().strokes().is_empty());
+        canvas.redo().expect("redo stroke");
+        assert_eq!(canvas.document().layer(selected).unwrap().strokes().len(), 1);
+    }
+
+    #[test]
+    fn layer_add_visibility_and_removal_are_undoable() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let first = canvas.document().layers()[0].id();
+        let second = canvas.add_layer("Ink").expect("add layer");
+        assert_eq!(canvas.document().layers().len(), 2);
+
+        canvas.set_layer_visibility(second, false).expect("hide layer");
+        assert!(!canvas.document().layer(second).unwrap().is_visible());
+        canvas.undo().expect("undo visibility");
+        assert!(canvas.document().layer(second).unwrap().is_visible());
+        canvas.redo().expect("redo visibility");
+        assert!(!canvas.document().layer(second).unwrap().is_visible());
+
+        canvas.remove_layer(second).expect("remove layer");
+        assert!(canvas.document().layer(second).is_none());
+        canvas.undo().expect("undo removal");
+        assert!(canvas.document().layer(second).is_some());
+        canvas.redo().expect("redo removal");
+        assert!(canvas.document().layer(second).is_none());
+        assert!(canvas.document().layer(first).is_some());
+    }
+
+    #[test]
+    fn removing_the_last_layer_is_rejected() {
+        let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let only_layer = canvas.document().layers()[0].id();
+        assert_eq!(
+            canvas.remove_layer(only_layer),
+            Err(DocumentError::CannotRemoveLastLayer)
+        );
+        assert_eq!(canvas.document().layers().len(), 1);
     }
 
     #[test]
