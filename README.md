@@ -17,7 +17,7 @@ This is not a general video editor or a full 3D modelling package.
 
 The repository contains a Rust workspace with timeline math, reversible canvas transforms, pointer smoothing, pressure-aware brush sampling, connected stroke mesh geometry, and bounded CPU-side tile coverage/dirty tracking. It also contains an experimental Tileink desktop adapter and a narrow UniFFI boundary.
 
-There is **no usable desktop application, production renderer, document model, layer system, save/recovery flow, or animation editor yet**.
+There is **no usable product desktop application, production renderer, document model, layer system, save/recovery flow, or animation editor yet**. The first integration prototype now exists under `apps/desktop-prototype`: it creates a winit window and wgpu surface, renders a test `StrokeMesh`, and hooks Windows pen history. [PR #18](https://github.com/PanDuroDev/test/pull/18) passed CI on Linux, Windows, and macOS, including formatting and Clippy. This validates compilation and automated tests only; physical Windows GPU presentation and a real pen device remain unverified. The Windows Release build completed successfully in [Actions run #41253986206](https://github.com/PanDuroDev/test/actions/runs/41253986206). It produced the `rasm-desktop-prototype-windows-x64` artifact (EXE plus README, approximately 2.75 MB compressed; available until 2026-11-14). The executable is a prototype and still needs a real Windows GPU/pen smoke test.
 
 The Android FFI work is preserved as an independent integration experiment:
 - PR #14 added the Rust/Kotlin UniFFI boundary and Android ARM64 build/binding generation.
@@ -29,7 +29,7 @@ The Android FFI work is preserved as an independent integration experiment:
 | --- | --- |
 | Product platform | PC desktop only; Windows first |
 | Core engine | Rust, kept platform-independent where practical |
-| Desktop window/input/UI | To be selected through a measured Windows prototype |
+| Desktop window/input/UI | `winit` 0.30.13 prototype in progress; final UI framework not selected |
 | GPU abstraction | wgpu candidate; no production renderer selected |
 | 2D math | glam, kurbo |
 | Vector path tessellation | lyon candidate |
@@ -50,6 +50,7 @@ The existing Android/Kotlin UniFFI smoke host remains isolated test infrastructu
 - `crates/engine-ffi`: narrow UniFFI DTO boundary retained for integration testing.
 - `android/ffi-smoke`: optional Android host for testing the existing Kotlin/Rust boundary; not product UI.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
+- `apps/desktop-prototype`: early winit + wgpu window/surface and Windows pen-input prototype; not product UI.
 - `docs/architecture/FOUNDATION.md`: product architecture, math, rendering, and roadmap.
 - `docs/PROJECT_PLAN.md`: maintained implementation log and contributor/AI handoff instructions.
 - `docs/architecture/RENDERER_SPIKE.md`: Tileink evaluation and current limitations.
@@ -64,6 +65,14 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+To run the first desktop window/surface prototype (requires a working desktop GPU adapter):
+
+```sh
+cargo run -p rasm-desktop-prototype
+```
+
+It opens a dark window with a deterministic cyan test stroke. Use the left mouse button or a Windows pen to add strokes. The Windows pen hook reads coalesced pointer history, pressure, and tilt where provided. This is a development prototype, not the final application.
 
 To render a sample stroke offscreen on a desktop machine with a usable WGPU adapter:
 

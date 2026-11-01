@@ -2,7 +2,7 @@
 
 > هذا الملف هو نقطة التسليم الأساسية لأي مطوّر أو وكيل AI يعمل على المستودع. اقرأه أولًا، ثم اقرأ المستندات المعمارية المرتبطة قبل تغيير التصميم.  
 > آخر تحديث: 2026-11-01  
-> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. أساس Rust والفرش وهندسة الضربة والبلاطات موجود؛ لا توجد واجهة Desktop قابلة للاستخدام أو Renderer إنتاجي أو Document Model بعد. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
+> الحالة العامة: **المنتج PC Desktop فقط مع Windows كمنصة البداية. أساس Rust والفرش وهندسة الضربة والبلاطات موجود. PR #18 يضيف نموذج نافذة WGPU وإدخال Windows pen/pointer، واجتاز CI بالكامل على Linux وWindows وmacOS مع format وClippy وبناء Android FFI. اكتمل بناء EXE ورفعه كـ Artifact باسم `rasm-desktop-prototype-windows-x64` في تشغيل CI رقم #41253986206؛ التشغيل الفعلي على Windows وقلم/GPU حقيقي لم يُتحقق منه بعد. لا يوجد Document Model أو واجهة منتج أو Renderer إنتاجي بعد. جسر Android/Kotlin محفوظ كتجربة FFI منفصلة وليس هدفًا للمنتج.**
 
 ## 1. لماذا يوجد هذا الملف؟
 
@@ -156,9 +156,9 @@
 
 ### ما لا يمكن الادعاء بوجوده بعد
 
-- تطبيق Desktop أو واجهة رسم فعلية.
-- تكامل Windows pen/pointer متصل بالمحرك ومختبر على جهاز فعلي.
-- Renderer إنتاجي أو Surface مكتبي يعرض الضربات.
+- تطبيق Desktop منتجي قابل للاستخدام أو واجهة أدوات نهائية؛ الموجود نموذج تكامل مستقل في PR #18 وليس تطبيق المنتج.
+- تحقق فعلي من Windows pen/pointer أو GPU على جهاز فعلي؛ الكود موجود واجتاز CI، لكن اختبار الأجهزة لم يحدث.
+- Renderer إنتاجي؛ نموذج WGPU في PR #18 مسار أولي وليس Renderer نهائيًا.
 - ضربة فرشاة متصلة بجودة إنتاجية.
 - دمج dirty regions المتجاورة أو invalidation graph للطبقات والتحويلات أو GPU tile cache.
 - طبقات وصيغة ملفات وحفظ تلقائي وundo/redo.
@@ -241,9 +241,26 @@
 - لا تتطلب من تطبيق Desktop استخدام Kotlin أو UniFFI.
 - تبقى ملفات Android والـ FFI محفوظة؛ لا تُحذف عند اعتماد PC-only.
 
-### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — [Issue #17](https://github.com/PanDuroDev/test/issues/17)
+### المرحلة 5B: إثبات مسار Windows Desktop والنافذة وGPU — قيد التنفيذ عبر [Issue #17](https://github.com/PanDuroDev/test/issues/17)
 
-**الهدف:** إنشاء أصغر نموذج مكتبي يثبت أن المحرك الحالي يمكن عرضه والتفاعل معه على Windows قبل بناء واجهة المنتج.
+**فرع التنفيذ:** `desktop/windows-renderer-prototype`.
+
+**ما أُضيف في فرع التنفيذ (PR #18 ما زال Draft):**
+- crate مكتبي `apps/desktop-prototype` باستخدام `winit 0.30.13` و`wgpu 30.0.0`.
+- نافذة Desktop وسطح WGPU مع إدارة resize وLost/Outdated/Timeout/occluded surface states.
+- إعادة استخدام `engine-ink` لتوليد `StrokeMesh` وتحويله إلى vertex/index buffers ثم إرساله إلى مسار العرض.
+- مسار Windows hook عبر `EventLoopBuilderExtWindows::with_msg_hook` قبل تمرير رسالة Win32 إلى winit.
+- التقاط `WM_POINTERDOWN/UPDATE/UP`، واسترجاع العينات المدمجة عبر `GetPointerPenInfoHistory`، وتحويل ضغط القلم وميله ودورانه عند توفر masks.
+- fallback للرسم بالفأرة، وحدّ للـ history والـ GPU mesh upload لحماية الذاكرة.
+- خط اختبار ثابت يظهر عند فتح النافذة ليتحقق المستخدم بصريًا من مسار StrokeMesh حتى دون جهاز قلم.
+
+**نتائج CI المثبتة:** [التشغيل #41252760860](https://github.com/PanDuroDev/test/actions/runs/41252760860) نجح في الوظائف الخمس: format وClippy، واختبارات workspace على Ubuntu وWindows وmacOS، وبناء Android ARM64 FFI وتوليد Kotlin bindings.
+
+**خطوة التوزيع:** أُضيفت إلى workflow مهمة Windows تبني نسخة Release وتُرفق EXE مع تعليمات التشغيل باسم Artifact `rasm-desktop-prototype-windows-x64`. نجح التشغيل [#41253986206](https://github.com/PanDuroDev/test/actions/runs/41253986206) في الوظائف الست، وأنشأ Artifact باسم `rasm-desktop-prototype-windows-x64` يضم EXE وREADME، بحجم مضغوط يقارب 2.75 MB وصلاحية حتى 2026-11-14. تم تنزيل الحزمة وفحص محتويات ZIP والتأكد أن الملف EXE بصيغة Windows PE عبر ترويسة MZ؛ لم يتم تشغيله على Windows فعلي بعد.
+
+**ما لم يُثبت بعد:** تشغيل التطبيق على Windows فعليًا، عرض السطح على GPU المستخدم، عمل قلم حقيقي عبر Windows Pointer APIs، resize/minimize/restore على جهاز فعلي، وقياس latency أو الذاكرة. نجاح CI يثبت البناء والاختبارات فقط ولا يثبت هذه الأمور.
+
+**الهدف:** إثبات أصغر مسار مكتبي متكامل للمحرك قبل اعتماد إطار واجهة المنتج أو Renderer نهائي.
 
 **المهام:**
 - مقارنة خيارات نافذة/إدخال/واجهة مكتبية، مع إبقاء اختيار إطار UI مفتوحًا حتى ظهور نتائج الاختبار.
@@ -253,7 +270,7 @@
 - قياس input-to-visible latency، استهلاك الذاكرة، وإعادة إنشاء Surface وفقدان GPU context.
 - إبقاء Tileink adapter تجربة مقارنة فقط، وعدم اعتماده قبل اختبارات جودة وأداء فعلية.
 
-**معايير القبول:** نموذج يعمل على Windows فعليًا، يعرض stroke mesh على GPU، يثبت وصول بيانات pen/pointer، ويقدم قياسات قابلة للتكرار مع توثيق الجهاز والـ backend والقيود. لا يُدّعى دعم القلم أو GPU قبل الاختبار الفعلي.
+**المهام المتبقية ومعايير القبول:** تنزيل EXE متاح الآن؛ الخطوة المتبقية تشغيله على Windows فعليًا، والتحقق من ظهور StrokeMesh على GPU وإدخال القلم على جهاز داعم، واختبار resize/minimize/restore. ثم قياس latency والذاكرة مع توثيق الجهاز والـ backend. لا يُدّعى دعم القلم أو GPU على مستوى المنتج قبل الاختبار الفعلي.
 
 ### المرحلة 6: نموذج المستند والطبقات والتراجع
 
@@ -406,7 +423,7 @@ target/renderer-spike.png
 3. افحص آخر commit والـ Issues والـ PRs المفتوحة وحالة Actions على GitHub؛ قد يكون المستودع تقدم بعد تاريخ هذا السجل.
 4. افحص محتوى الملفات الفعلي. هذا الملف دليل استلام، وليس بديلًا عن المصدر.
 5. لا تعِد تنفيذ ميزة موجودة، ولا تفترض أن بندًا مخططًا أصبح منفذًا.
-6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل ما زال مفتوحًا. هدف المنتج الحالي PC-only مع Windows أولًا؛ تابع PR #16 لتثبيت هذا الاتجاه، ثم نفّذ Issue #17 لبناء نموذج النافذة وwgpu وWindows pen input. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
+6. عند آخر تحديث، المراحل 1–4 مدمجة، وPR #14 يضيف FFI boundary، وPR #15 هو Android smoke host مستقل. هدف المنتج الحالي PC-only مع Windows أولًا؛ PR #16 ثبّت الاتجاه، وPR #18 Draft على فرع `desktop/windows-renderer-prototype` ينفذ Issue #17. آخر CI (#41253986206) نجح في الوظائف الست، بما فيها بناء EXE ورفع Artifact Windows؛ يجب عدم إغلاق Issue #17 قبل اختبار الجهاز الفعلي. لا تحذف تجربة Android السابقة أو تجعلها شرطًا للمنتج.
 7. أنشئ Issue/branch/PR واختبارات قبل الدمج.
 8. حدّث هذا المستند في PR نفسه قبل الدمج.
 
@@ -423,5 +440,8 @@ target/renderer-spike.png
 - 2026-10-31: فتح Issue #13 لإضافة `StrokeBounds` وواجهة `StrokeMesh::bounds()` تمهيدًا لربط هندسة الضربة بمناطق إعادة الرسم.
 - 2026-10-31: دمج PR #14 لإضافة جسر UniFFI DTO وبناء Android ARM64 وتوليد Kotlin bindings.
 - 2026-10-31: فتح PR #15 لإضافة Android FFI smoke host؛ البناء والتغليف نجحا، لكن Emulator لم يكمل الإقلاع في أول تشغيل CI. بقي PR مفتوحًا كتجربة تكامل مستقلة.
-- 2026-11-01: توثيق هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة، عبر PR #16 (مفتوح).
+- 2026-11-01: دمج PR #16 لتثبيت هدف المنتج PC Desktop فقط مع Windows أولًا، وحفظ كود Android/UniFFI كتجربة مستقلة.
+- 2026-11-01: بدء Issue #17 على فرع `desktop/windows-renderer-prototype`: إضافة نافذة winit، وWGPU surface، وعرض StrokeMesh، وربط Windows pen/pointer history. التنفيذ لم يُثبت بعد عبر CI أو تشغيل فعلي على Windows.
 - 2026-11-01: فتح Issue #17 لتنفيذ نموذج Windows window + wgpu surface + pen/pointer input قبل اعتماد إطار الواجهة.
+- 2026-11-01: اكتمل CI لـ PR #18، مع نجاح format وClippy واختبارات Linux/Windows/macOS وبناء Android ARM64 FFI في التشغيل #41252760860.
+- 2026-11-01: اكتمل تشغيل CI #41253986206 بنجاح في الوظائف الست. أُنشئ Artifact `rasm-desktop-prototype-windows-x64` (EXE + README) بحجم مضغوط 2.75 MB وصلاحية حتى 2026-11-14؛ تم تنزيل ZIP وفحص محتوياته وترويسة Windows PE، دون الادعاء بتشغيل EXE على جهاز Windows فعلي.

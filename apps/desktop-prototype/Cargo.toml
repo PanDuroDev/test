@@ -1,0 +1,24 @@
+[package]
+name = "rasm-desktop-prototype"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Windows-first window, WGPU surface, and pen-input integration prototype"
+
+[dependencies]
+bytemuck = { version = "1.24.0", features = ["derive"] }
+glam.workspace = true
+pollster = "0.4.0"
+rasm-engine-ink = { path = "../../crates/engine-ink" }
+wgpu = "=30.0.0"
+winit = "=0.30.13"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_Pointer",
+    "Win32_UI_WindowsAndMessaging",
+] }

@@ -86,3 +86,35 @@ jobs:
 
       - name: Run workspace tests
         run: cargo test --workspace
+
+  desktop-prototype-artifact:
+    name: Build Windows desktop prototype artifact
+    runs-on: windows-latest
+    needs:
+      - quality
+      - tests
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Windows desktop prototype
+        run: cargo build --release -p rasm-desktop-prototype
+
+      - name: Stage executable and test instructions
+        shell: pwsh
+        run: |
+          $stage = "dist/rasm-desktop-prototype-windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target/release/rasm-desktop-prototype.exe" "$stage/rasm-desktop-prototype.exe"
+          Copy-Item "apps/desktop-prototype/README.md" "$stage/README.md"
+
+      - name: Upload Windows prototype
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: rasm-desktop-prototype-windows-x64
+          path: dist/rasm-desktop-prototype-windows-x64/
+          if-no-files-found: error
+          retention-days: 14
