@@ -1438,4 +1438,158 @@ mod tests {
         assert!(document.layers()[0].strokes().is_empty());
         assert_eq!(history.undo_len(), 0);
     }
+
+
+    #[test]
+    fn snapshot_round_trip_preserves_document_state_and_identifiers() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = add_layer(&mut history, &mut document, "Ink");
+        let stroke_id = match history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![
+                        sample(1.5, 2.5, Some(0.4), 10),
+                        sample(8.5, 9.5, Some(0.9), 20),
+                    ],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+
+        let restored = Document::from_snapshot(document.snapshot()).expect("restore snapshot");
+        assert_eq!(restored, document);
+        assert_eq!(
+            restored.layer(layer_id).expect("layer").stroke(stroke_id).expect("stroke").samples(),
+            document.layer(layer_id).expect("layer").stroke(stroke_id).expect("stroke").samples()
+        );
+    }
+
+    #[test]
+    fn snapshot_restore_advances_identifiers_without_collisions() {
+        let mut source = document();
+        let mut history = History::default();
+        let layer_id = add_layer(&mut history, &mut source, "Existing");
+        let _stroke_id = match history
+            .execute(
+                &mut source,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 1)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+
+        let mut restored = Document::from_snapshot(source.snapshot()).expect("restore");
+        let mut restored_history = History::default();
+        let next_layer = add_layer(&mut restored_history, &mut restored, "Next");
+        assert!(next_layer.get() > layer_id.get());
+    }
+
+    #[test]
+    fn snapshot_rejects_empty_layer_list() {
+        let mut snapshot = document().snapshot();
+        snapshot.layers.clear();
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::CannotRemoveLastLayer)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_duplicate_or_zero_layer_ids() {
+        let mut snapshot = document().snapshot();
+        let first = snapshot.layers[0].clone();
+        snapshot.layers.push(first);
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::DuplicateLayerId)
+        );
+
+        let mut snapshot = document().snapshot();
+        snapshot.layers[0].id = 0;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidLayerId)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_layer_opacity() {
+        let mut snapshot = document().snapshot();
+        snapshot.layers[0].opacity = f32::NAN;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidOpacity)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_brush_parameters() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 0)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+
+        let mut snapshot = document.snapshot();
+        snapshot.layers[0].strokes[0].brush.base_radius = 0.0;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidBrushConfig)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_invalid_samples_and_non_monotonic_timestamps() {
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![
+                        sample(0.0, 0.0, Some(1.0), 10),
+                        sample(1.0, 1.0, Some(1.0), 20),
+                    ],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+
+        let mut invalid_position = document.snapshot();
+        invalid_position.layers[0].strokes[0].samples[0].x = f64::NAN;
+        assert_eq!(
+            Document::from_snapshot(invalid_position),
+            Err(DocumentError::InvalidStrokeSample)
+        );
+
+        let mut invalid_timestamps = document.snapshot();
+        invalid_timestamps.layers[0].strokes[0].samples[1].timestamp_ns = 5;
+        assert_eq!(
+            Document::from_snapshot(invalid_timestamps),
+            Err(DocumentError::NonMonotonicStrokeTimestamps)
+        );
+    }
 }
