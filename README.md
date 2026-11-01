@@ -15,9 +15,9 @@ This is not a general video editor or a full 3D modelling package.
 
 ## Current status
 
-The repository contains a Rust workspace with timeline math, reversible canvas transforms, pointer smoothing, pressure-aware brush sampling, connected stroke mesh geometry, bounded CPU-side tile coverage/dirty tracking, a document/layer/stroke model with undo/redo, and a versioned RASM v1 byte codec. It also contains an experimental Tileink desktop adapter and a narrow UniFFI boundary.
+The repository contains a Rust workspace with timeline math, reversible canvas transforms, pointer smoothing, pressure-aware brush sampling, connected stroke mesh geometry, bounded CPU-side tile coverage/dirty tracking, a document/layer/stroke model with undo/redo, validated snapshots, a versioned RASM v1 byte codec, and filesystem-backed save/load with atomic replacement. It also contains an experimental Tileink desktop adapter and a narrow UniFFI boundary.
 
-There is **no complete product drawing application, production renderer, filesystem save/load flow, crash recovery, or animation editor yet**. The first desktop integration prototype was merged in [PR #18](https://github.com/PanDuroDev/test/pull/18). The user confirmed the Windows smoke test for the window, visible test stroke, mouse drawing, and resize/restore behavior. A dedicated pen pressure/tilt hardware test and latency/resource benchmark remain unverified. The document foundation is now in `main`: [PR #20](https://github.com/PanDuroDev/test/pull/20) added the Document/Layer/Stroke model and bounded command-based undo/redo. Its CI run [#41255940489](https://github.com/PanDuroDev/test/actions/runs/41255940489) passed all six jobs, including 87 workspace tests on each of Linux, Windows, and macOS, formatting, Clippy, and the Android FFI build/bindings check. Validated document snapshots and the versioned RASM v1 codec are now in `main` via [PR #22](https://github.com/PanDuroDev/test/pull/22). Its six CI jobs passed in [run #41257206578](https://github.com/PanDuroDev/test/actions/runs/41257206578). Filesystem save/load with atomic replacement is the next increment under [Issue #25](https://github.com/PanDuroDev/test/issues/25); it is still under development and must not be described as complete.
+There is **no complete product drawing application, production renderer, crash recovery flow, or animation editor yet**. The first desktop integration prototype was merged in [PR #18](https://github.com/PanDuroDev/test/pull/18). The user confirmed the Windows smoke test for the window, visible test stroke, mouse drawing, and resize/restore behavior. A dedicated pen pressure/tilt hardware test and latency/resource benchmark remain unverified. The document foundation is in `main`: [PR #20](https://github.com/PanDuroDev/test/pull/20) added the Document/Layer/Stroke model and bounded command-based undo/redo; [PR #22](https://github.com/PanDuroDev/test/pull/22) added validated snapshots and the versioned RASM v1 byte codec. Filesystem-backed `save_atomic` and `load` are implemented in [PR #26](https://github.com/PanDuroDev/test/pull/26), with same-directory temporary files and atomic replacement. CI run [#41258015343](https://github.com/PanDuroDev/test/actions/runs/41258015343) passed all six jobs, including Windows, Linux, macOS, Format, Clippy, Android FFI, and the Windows prototype artifact. This does not include autosave, journaling, or crash recovery.
 
 The Android FFI work is preserved as an independent integration experiment:
 - PR #14 added the Rust/Kotlin UniFFI boundary and Android ARM64 build/binding generation.
@@ -29,7 +29,7 @@ The Android FFI work is preserved as an independent integration experiment:
 | --- | --- |
 | Product platform | PC desktop only; Windows first |
 | Core engine | Rust, kept platform-independent where practical |
-| Desktop window/input/UI | `winit` 0.30.13 prototype in progress; final UI framework not selected |
+| Desktop window/input/UI | `winit` 0.30.13 Windows prototype available; final UI framework not selected |
 | GPU abstraction | wgpu candidate; no production renderer selected |
 | 2D math | glam, kurbo |
 | Vector path tessellation | lyon candidate |
@@ -48,7 +48,7 @@ The existing Android/Kotlin UniFFI smoke host remains isolated test infrastructu
 - `crates/engine-ink`: validated pointer/pen samples, pressure-aware brush dabs, and renderer-independent connected stroke mesh geometry.
 - `crates/engine-tiles`: document-pixel tile coverage and bounded transactional dirty-tile tracking.
 - `crates/engine-document`: document/layer/stroke model, validated snapshot conversion, and reversible command history.
-- `crates/engine-storage`: versioned RASM v1 byte codec and corruption checks; filesystem save/load is being implemented under Issue #25.
+- `crates/engine-storage`: versioned RASM v1 byte codec, corruption checks, and filesystem-backed atomic save/load.
 - `crates/engine-ffi`: narrow UniFFI DTO boundary retained for integration testing.
 - `android/ffi-smoke`: optional Android host for testing the existing Kotlin/Rust boundary; not product UI.
 - `crates/renderer-tileink`: experimental Tileink Canvas adapter and offscreen PNG example.
