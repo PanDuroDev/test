@@ -115,8 +115,8 @@ impl CanvasViewport {
         let screen_size = DVec2::new(f64::from(screen_width), f64::from(screen_height));
         let fit_zoom = (screen_size.x / document_size.x).min(screen_size.y / document_size.y);
         let fit_origin = (screen_size - document_size * fit_zoom) * 0.5;
-        let zoom = fit_zoom * view.zoom();
-        let screen_origin = fit_origin + view.pan();
+        let zoom = fit_zoom * view.zoom;
+        let screen_origin = fit_origin + view.pan;
         let transform = ViewportTransform::new(zoom, 0.0, screen_origin).ok()?;
 
         Some(Self {
