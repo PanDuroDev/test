@@ -811,7 +811,6 @@ mod tests {
         assert_eq!(canvas.document().layers().len(), 1);
     }
 
-
     #[test]
     fn replacing_document_clears_history_and_refits_viewport() {
         let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
@@ -841,15 +840,13 @@ mod tests {
         let colour = StrokeColor::new([0.25, 0.5, 0.75, 1.0]).expect("colour");
 
         canvas
-            .commit_stroke_to_with_color(
-                layer,
-                sample_stroke(),
-                BrushConfig::default(),
-                colour,
-            )
+            .commit_stroke_to_with_color(layer, sample_stroke(), BrushConfig::default(), colour)
             .expect("commit coloured stroke");
 
-        assert_eq!(canvas.document().layer(layer).unwrap().strokes()[0].color(), colour);
+        assert_eq!(
+            canvas.document().layer(layer).unwrap().strokes()[0].color(),
+            colour
+        );
         canvas.undo().expect("undo");
         assert!(canvas.document().layer(layer).unwrap().strokes().is_empty());
         canvas.redo().expect("redo");
