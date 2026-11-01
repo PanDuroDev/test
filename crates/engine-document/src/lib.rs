@@ -1703,4 +1703,94 @@ mod tests {
             Err(DocumentError::NonMonotonicStrokeTimestamps)
         );
     }
+
+
+    #[test]
+    fn snapshot_preserves_next_layer_id_after_a_layer_is_removed() {
+        let mut source = document();
+        let mut history = History::default();
+        let removed = add_layer(&mut history, &mut source, "Temporary");
+        history
+            .execute(&mut source, Edit::remove_layer(removed))
+            .expect("remove layer");
+
+        let mut restored =
+            Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored_history = History::default();
+        let next = add_layer(&mut restored_history, &mut restored, "Next");
+        assert!(next.get() > removed.get());
+    }
+
+    #[test]
+    fn snapshot_preserves_next_stroke_id_after_a_stroke_is_removed() {
+        let mut source = document();
+        let mut history = History::default();
+        let layer_id = source.layers()[0].id();
+        let removed = match history
+            .execute(
+                &mut source,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(1.0, 2.0, None, 10)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+        history
+            .execute(&mut source, Edit::remove_stroke(layer_id, removed))
+            .expect("remove stroke");
+
+        let mut restored =
+            Document::from_snapshot(source.snapshot()).expect("restore snapshot");
+        let mut restored_history = History::default();
+        let next = match restored_history
+            .execute(
+                &mut restored,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(3.0, 4.0, None, 20)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add next stroke")
+        {
+            EditResult::StrokeAdded(id) => id,
+            result => panic!("unexpected result: {result:?}"),
+        };
+        assert!(next.get() > removed.get());
+    }
+
+    #[test]
+    fn snapshot_rejects_next_id_counters_below_existing_ids() {
+        let mut snapshot = document().snapshot();
+        snapshot.next_layer_id = 1;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidNextIdentifier)
+        );
+
+        let mut document = document();
+        let mut history = History::default();
+        let layer_id = document.layers()[0].id();
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke(
+                    layer_id,
+                    vec![sample(0.0, 0.0, None, 0)],
+                    BrushConfig::default(),
+                ),
+            )
+            .expect("add stroke");
+        let mut snapshot = document.snapshot();
+        snapshot.next_stroke_id = 1;
+        assert_eq!(
+            Document::from_snapshot(snapshot),
+            Err(DocumentError::InvalidNextIdentifier)
+        );
+    }
 }
