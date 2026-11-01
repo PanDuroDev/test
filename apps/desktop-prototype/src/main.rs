@@ -298,7 +298,7 @@ impl InputState {
     fn save_project(&mut self, mut path: PathBuf) -> Result<(), String> {
         if !path
             .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("rasm"))
+            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("rasm"))
         {
             path.set_extension("rasm");
         }
