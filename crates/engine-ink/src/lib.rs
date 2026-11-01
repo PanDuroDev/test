@@ -149,6 +149,17 @@ impl BrushConfig {
         self.base_radius
     }
 
+    /// Returns the same brush shape with a different base radius.
+    pub fn with_base_radius(self, base_radius: f64) -> Result<Self, StrokeError> {
+        Self::new(
+            base_radius,
+            self.minimum_pressure_ratio,
+            self.pressure_exponent,
+            self.spacing_ratio,
+            self.max_dabs,
+        )
+    }
+
     pub const fn minimum_pressure_ratio(self) -> f64 {
         self.minimum_pressure_ratio
     }

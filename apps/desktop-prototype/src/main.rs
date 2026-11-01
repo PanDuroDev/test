@@ -9,7 +9,10 @@ use std::{
 mod canvas;
 
 use bytemuck::{Pod, Zeroable};
-use canvas::{CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT, DOCUMENT_WIDTH};
+use canvas::{
+    BRUSH_RADIUS_STEP, BrushSettings, CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT,
+    DOCUMENT_WIDTH,
+};
 use glam::DVec2;
 use rasm_engine_document::Document;
 use rasm_engine_ink::{
@@ -53,6 +56,9 @@ struct InputState {
     pan_anchor: Option<DVec2>,
     mouse_epoch: Option<Instant>,
     last_error: Option<String>,
+    brush: BrushSettings,
+    stroke_colors: HashMap<u64, [f32; 4]>,
+    title_dirty: bool,
     #[cfg(target_os = "windows")]
     last_pen_axes: Option<PenAxes>,
 }
@@ -87,6 +93,11 @@ impl InputState {
             .commit_stroke(demo, BrushConfig::default())
             .expect("valid demo stroke");
         canvas.clear_history();
+        let brush = BrushSettings::default();
+        let mut stroke_colors = HashMap::new();
+        if let Some(id) = canvas.last_stroke_id() {
+            stroke_colors.insert(id, brush.color());
+        }
 
         Self {
             canvas,
@@ -97,6 +108,9 @@ impl InputState {
             pan_anchor: None,
             mouse_epoch: None,
             last_error: None,
+            brush,
+            stroke_colors,
+            title_dirty: true,
             #[cfg(target_os = "windows")]
             last_pen_axes: None,
         }
@@ -206,13 +220,50 @@ impl InputState {
         if samples.is_empty() {
             return;
         }
-        if let Err(error) = self.canvas.commit_stroke(samples, BrushConfig::default()) {
-            self.last_error = Some(format!("stroke rejected: {error}"));
+        let color = self.brush.color();
+        match self.canvas.commit_stroke(samples, self.brush.brush()) {
+            Ok(()) => {
+                if let Some(id) = self.canvas.last_stroke_id() {
+                    self.stroke_colors.insert(id, color);
+                }
+            }
+            Err(error) => self.last_error = Some(format!("stroke rejected: {error}")),
         }
     }
 
     fn take_error(&mut self) -> Option<String> {
         self.last_error.take()
+    }
+
+    fn take_title_change(&mut self) -> bool {
+        std::mem::take(&mut self.title_dirty)
+    }
+
+    fn title(&self) -> String {
+        format!(
+            "Rasm Studio | {} | wheel zoom, middle-drag pan, Ctrl+0 reset, B/E tools, [ ] size, 1-4 colour",
+            self.brush.status()
+        )
+    }
+
+    fn select_eraser(&mut self, eraser: bool) -> bool {
+        let changed = self.brush.set_eraser(eraser);
+        self.note_brush_change(changed)
+    }
+
+    fn scale_brush(&mut self, factor: f64) -> bool {
+        let changed = self.brush.scale_radius(factor);
+        self.note_brush_change(changed)
+    }
+
+    fn select_color(&mut self, index: usize) -> bool {
+        let changed = self.brush.select_color(index);
+        self.note_brush_change(changed)
+    }
+
+    fn note_brush_change(&mut self, changed: bool) -> bool {
+        self.title_dirty |= changed;
+        changed
     }
 
     fn append_monotonic(target: &mut Vec<StrokeSample>, sample: StrokeSample) {
@@ -306,9 +357,11 @@ enum AppEvent {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct GpuVertex {
     position: [f32; 2],
+    color: [f32; 4],
 }
 
-const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2];
+const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 2] =
+    wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x4];
 
 impl GpuVertex {
     fn layout() -> wgpu::VertexBufferLayout<'static> {
@@ -468,6 +521,7 @@ impl GpuRenderer {
     fn append_geometry(
         positions: &[DVec2],
         stroke_indices: &[u32],
+        color: [f32; 4],
         viewport: CanvasViewport,
         vertices: &mut Vec<GpuVertex>,
         indices: &mut Vec<u32>,
@@ -483,6 +537,7 @@ impl GpuRenderer {
         for position in positions {
             vertices.push(GpuVertex {
                 position: viewport.document_to_clip(*position),
+                color,
             });
         }
         indices.extend(stroke_indices.iter().map(|index| base + *index));
@@ -491,29 +546,40 @@ impl GpuRenderer {
     fn append_live_stroke(
         &self,
         samples: &[StrokeSample],
+        brush: BrushSettings,
         viewport: CanvasViewport,
         vertices: &mut Vec<GpuVertex>,
         indices: &mut Vec<u32>,
     ) {
-        let Ok(dabs) = tessellate_stroke(samples, BrushConfig::default()) else {
+        let Ok(dabs) = tessellate_stroke(samples, brush.brush()) else {
             return;
         };
         let Ok(mesh) = tessellate_stroke_mesh(&dabs, StrokeGeometryConfig::default()) else {
             return;
         };
         let positions: Vec<DVec2> = mesh.vertices().iter().map(|v| v.position()).collect();
-        Self::append_geometry(&positions, mesh.indices(), viewport, vertices, indices);
+        Self::append_geometry(
+            &positions,
+            mesh.indices(),
+            brush.color(),
+            viewport,
+            vertices,
+            indices,
+        );
     }
 
     fn make_mesh_buffers(
         &mut self,
         document: &Document,
         active_samples: Option<&[StrokeSample]>,
+        brush: BrushSettings,
+        stroke_colors: &HashMap<u64, [f32; 4]>,
         viewport: CanvasViewport,
     ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
         let mut indices = Vec::<u32>::new();
 
+        let fallback_color = BrushSettings::default().color();
         let mut visible_ids = Vec::new();
         for layer in document.layers() {
             if !layer.is_visible() || layer.opacity() <= 0.0 {
@@ -523,9 +589,11 @@ impl GpuRenderer {
                 let id = stroke.id().get();
                 visible_ids.push(id);
                 let cached = self.cached_stroke(id, stroke.samples(), stroke.brush());
+                let color = stroke_colors.get(&id).copied().unwrap_or(fallback_color);
                 Self::append_geometry(
                     &cached.positions,
                     &cached.indices,
+                    color,
                     viewport,
                     &mut vertices,
                     &mut indices,
@@ -535,7 +603,7 @@ impl GpuRenderer {
         self.stroke_cache.retain(|id, _| visible_ids.contains(id));
 
         if let Some(samples) = active_samples {
-            self.append_live_stroke(samples, viewport, &mut vertices, &mut indices);
+            self.append_live_stroke(samples, brush, viewport, &mut vertices, &mut indices);
         }
 
         if vertices.is_empty() {
@@ -566,6 +634,8 @@ impl GpuRenderer {
         &mut self,
         document: &Document,
         active_samples: Option<&[StrokeSample]>,
+        brush: BrushSettings,
+        stroke_colors: &HashMap<u64, [f32; 4]>,
         viewport: CanvasViewport,
     ) {
         if self.config.width == 0 || self.config.height == 0 {
@@ -601,7 +671,7 @@ impl GpuRenderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let (vertex_buffer, index_buffer, index_count) =
-            self.make_mesh_buffers(document, active_samples, viewport);
+            self.make_mesh_buffers(document, active_samples, brush, stroke_colors, viewport);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -724,11 +794,17 @@ impl ApplicationHandler<AppEvent> for App {
                     renderer.render(
                         input.canvas.document(),
                         input.active_samples(),
+                        input.brush,
+                        &input.stroke_colors,
                         input.canvas.viewport(),
                     );
                     if let Some(error) = input.take_error() {
                         if let Some(window) = &window {
                             window.set_title(&format!("Rasm Studio | {error}"));
+                        }
+                    } else if input.take_title_change() {
+                        if let Some(window) = &window {
+                            window.set_title(&input.title());
                         }
                     }
                 }
@@ -804,6 +880,32 @@ impl ApplicationHandler<AppEvent> for App {
                         lock(&self.input).canvas.reset_view();
                         true
                     }
+                    _ => false,
+                };
+                if changed {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Pressed
+                    && !event.repeat
+                    && !self.modifiers.control_key() =>
+            {
+                let changed = match event.physical_key {
+                    PhysicalKey::Code(KeyCode::KeyB) => lock(&self.input).select_eraser(false),
+                    PhysicalKey::Code(KeyCode::KeyE) => lock(&self.input).select_eraser(true),
+                    PhysicalKey::Code(KeyCode::BracketLeft) => {
+                        lock(&self.input).scale_brush(1.0 / BRUSH_RADIUS_STEP)
+                    }
+                    PhysicalKey::Code(KeyCode::BracketRight) => {
+                        lock(&self.input).scale_brush(BRUSH_RADIUS_STEP)
+                    }
+                    PhysicalKey::Code(KeyCode::Digit1) => lock(&self.input).select_color(0),
+                    PhysicalKey::Code(KeyCode::Digit2) => lock(&self.input).select_color(1),
+                    PhysicalKey::Code(KeyCode::Digit3) => lock(&self.input).select_color(2),
+                    PhysicalKey::Code(KeyCode::Digit4) => lock(&self.input).select_color(3),
                     _ => false,
                 };
                 if changed {
