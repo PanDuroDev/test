@@ -1049,14 +1049,12 @@ impl Operation {
 
                 let id = StrokeId(document.next_stroke_id);
                 document.next_stroke_id = next_id;
-                document.layers[layer_index]
-                    .strokes
-                    .push(Stroke {
-                        id,
-                        samples,
-                        brush,
-                        color,
-                    });
+                document.layers[layer_index].strokes.push(Stroke {
+                    id,
+                    samples,
+                    brush,
+                    color,
+                });
                 Ok((
                     Self::RemoveStroke {
                         layer_id,
@@ -1260,12 +1258,7 @@ mod tests {
         history
             .execute(
                 &mut document,
-                Edit::add_stroke_with_color(
-                    layer_id,
-                    samples,
-                    BrushConfig::default(),
-                    colour,
-                ),
+                Edit::add_stroke_with_color(layer_id, samples, BrushConfig::default(), colour),
             )
             .expect("add coloured stroke");
 
