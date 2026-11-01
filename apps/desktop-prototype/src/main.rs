@@ -184,6 +184,16 @@ impl InputState {
         self.store_completed(samples);
     }
 
+    /// Commits any active pointer stroke before a project operation starts.
+    fn finish_active_input(&mut self) {
+        self.end_mouse();
+        #[cfg(target_os = "windows")]
+        if let Some(pointer_id) = self.active_pen_id {
+            self.finish_pen(pointer_id);
+        }
+        self.end_pan();
+    }
+
     fn begin_pan(&mut self) {
         self.pan_anchor = self.cursor_position;
     }
@@ -1032,6 +1042,7 @@ impl App {
     }
 
     fn handle_project_action(&mut self, action: ProjectAction) {
+        lock(&self.input).finish_active_input();
         let current_path = lock(&self.input).current_path.clone();
         let selected_path = match action {
             ProjectAction::Open => self.file_dialog("Open Rasm project").pick_file(),
@@ -1456,6 +1467,26 @@ mod tests {
         assert!(!mesh.is_empty());
         assert!(!mesh.vertices().is_empty());
         assert!(mesh.triangle_count() > 0);
+    }
+
+    #[test]
+    fn project_action_finalizes_an_in_progress_mouse_stroke() {
+        let mut input = InputState::with_demo_stroke(960.0, 640.0);
+        let initial = input.canvas.document().layers()[0].strokes().len();
+
+        input.update_mouse_position(PhysicalPosition::new(480.0, 320.0));
+        input.begin_mouse();
+        input.update_mouse_position(PhysicalPosition::new(510.0, 340.0));
+        assert!(input.active_mouse_samples.is_some());
+
+        input.finish_active_input();
+
+        assert!(input.active_mouse_samples.is_none());
+        assert_eq!(
+            input.canvas.document().layers()[0].strokes().len(),
+            initial + 1
+        );
+        assert!(!input.canvas.can_redo());
     }
 
     #[test]
