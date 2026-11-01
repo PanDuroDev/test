@@ -900,8 +900,8 @@ impl GpuRenderer {
                 document,
                 active_samples,
                 brush,
-                stroke_colors,
                 layer_panel,
+                status_message,
                 viewport,
             );
         let mut encoder = self
