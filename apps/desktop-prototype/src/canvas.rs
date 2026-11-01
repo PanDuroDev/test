@@ -235,7 +235,10 @@ impl CanvasDocument {
 
     /// Adds a visible layer at the top of the stack and records it in history.
     pub fn add_layer(&mut self, name: impl Into<String>) -> Result<LayerId, DocumentError> {
-        match self.history.execute(&mut self.document, Edit::add_layer(name))? {
+        match self
+            .history
+            .execute(&mut self.document, Edit::add_layer(name))?
+        {
             EditResult::LayerAdded(id) => Ok(id),
             EditResult::None | EditResult::StrokeAdded(_) => {
                 unreachable!("adding a layer must return its new identifier")
@@ -249,14 +252,15 @@ impl CanvasDocument {
         id: LayerId,
         visible: bool,
     ) -> Result<(), DocumentError> {
-        let layer = self.document.layer(id).ok_or(DocumentError::LayerNotFound)?;
+        let layer = self
+            .document
+            .layer(id)
+            .ok_or(DocumentError::LayerNotFound)?;
         if layer.is_visible() == visible {
             return Ok(());
         }
-        self.history.execute(
-            &mut self.document,
-            Edit::set_layer_visibility(id, visible),
-        )?;
+        self.history
+            .execute(&mut self.document, Edit::set_layer_visibility(id, visible))?;
         Ok(())
     }
 
@@ -496,8 +500,8 @@ mod tests {
         BRUSH_RADIUS_STEP, BrushSettings, CanvasDocument, CanvasViewport, DOCUMENT_HEIGHT,
         DOCUMENT_WIDTH, ERASER_COLOR, MAX_BRUSH_RADIUS, MIN_BRUSH_RADIUS, PALETTE, ViewState,
     };
-    use rasm_engine_document::DocumentError;
     use glam::DVec2;
+    use rasm_engine_document::DocumentError;
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
     fn sample_stroke() -> Vec<StrokeSample> {
@@ -707,7 +711,6 @@ mod tests {
         assert!(canvas.last_stroke_id().is_some());
     }
 
-
     #[test]
     fn selected_layer_receives_strokes_and_history_restores_them() {
         let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
@@ -719,13 +722,33 @@ mod tests {
             .expect("commit to selected layer")
             .expect("non-empty stroke");
         assert_eq!(canvas.last_stroke_id_on(selected), Some(stroke_id));
-        assert!(canvas.document().layer(original).unwrap().strokes().is_empty());
-        assert_eq!(canvas.document().layer(selected).unwrap().strokes().len(), 1);
+        assert!(
+            canvas
+                .document()
+                .layer(original)
+                .unwrap()
+                .strokes()
+                .is_empty()
+        );
+        assert_eq!(
+            canvas.document().layer(selected).unwrap().strokes().len(),
+            1
+        );
 
         canvas.undo().expect("undo stroke");
-        assert!(canvas.document().layer(selected).unwrap().strokes().is_empty());
+        assert!(
+            canvas
+                .document()
+                .layer(selected)
+                .unwrap()
+                .strokes()
+                .is_empty()
+        );
         canvas.redo().expect("redo stroke");
-        assert_eq!(canvas.document().layer(selected).unwrap().strokes().len(), 1);
+        assert_eq!(
+            canvas.document().layer(selected).unwrap().strokes().len(),
+            1
+        );
     }
 
     #[test]
@@ -735,7 +758,9 @@ mod tests {
         let second = canvas.add_layer("Ink").expect("add layer");
         assert_eq!(canvas.document().layers().len(), 2);
 
-        canvas.set_layer_visibility(second, false).expect("hide layer");
+        canvas
+            .set_layer_visibility(second, false)
+            .expect("hide layer");
         assert!(!canvas.document().layer(second).unwrap().is_visible());
         canvas.undo().expect("undo visibility");
         assert!(canvas.document().layer(second).unwrap().is_visible());
