@@ -252,10 +252,10 @@ impl InputState {
     }
 
     fn title(&self) -> String {
-        let project_path = self.current_path.as_ref().map_or_else(
-            || "Untitled".to_owned(),
-            |path| path.display().to_string(),
-        );
+        let project_path = self
+            .current_path
+            .as_ref()
+            .map_or_else(|| "Untitled".to_owned(), |path| path.display().to_string());
         let layer_name = self
             .canvas
             .document()
@@ -268,8 +268,8 @@ impl InputState {
     }
 
     fn open_project(&mut self, path: PathBuf) -> Result<(), String> {
-        let document = rasm_engine_storage::load(&path)
-            .map_err(|error| format!("Open failed: {error}"))?;
+        let document =
+            rasm_engine_storage::load(&path).map_err(|error| format!("Open failed: {error}"))?;
         let active_layer = document
             .layers()
             .last()
@@ -443,7 +443,9 @@ impl InputState {
                             self.active_layer_id = id;
                             self.title_dirty = true;
                         }
-                        Err(error) => self.status_message = Some(format!("Cannot add layer: {error}")),
+                        Err(error) => {
+                            self.status_message = Some(format!("Cannot add layer: {error}"))
+                        }
                     }
                 }
                 layer_panel::LayerPanelAction::Select(id) => {
@@ -462,7 +464,8 @@ impl InputState {
                         return true;
                     };
                     if let Err(error) = self.canvas.set_layer_visibility(id, visible) {
-                        self.status_message = Some(format!("Cannot change layer visibility: {error}"));
+                        self.status_message =
+                            Some(format!("Cannot change layer visibility: {error}"));
                     }
                     self.title_dirty = true;
                 }
@@ -1052,9 +1055,7 @@ impl App {
                 }
                 result
             }
-            ProjectAction::Save | ProjectAction::SaveAs => {
-                lock(&self.input).save_project(path)
-            }
+            ProjectAction::Save | ProjectAction::SaveAs => lock(&self.input).save_project(path),
         };
 
         if let Err(error) = result {
