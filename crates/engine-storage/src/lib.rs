@@ -530,9 +530,14 @@ impl fmt::Display for FileStorageError {
         match self {
             Self::Io(error) => write!(formatter, "filesystem operation failed: {error}"),
             Self::Codec(error) => write!(formatter, "project codec failed: {error}"),
-            Self::FileTooLarge => formatter.write_str("project file exceeds the configured size limit"),
+            Self::FileTooLarge => {
+                formatter.write_str("project file exceeds the configured size limit")
+            }
             Self::DirectorySyncAfterCommit(error) => {
-                write!(formatter, "file was replaced, but directory sync failed: {error}")
+                write!(
+                    formatter,
+                    "file was replaced, but directory sync failed: {error}"
+                )
             }
         }
     }
@@ -585,11 +590,7 @@ pub fn load(path: impl AsRef<Path>) -> Result<Document, FileStorageError> {
     decode(&bytes).map_err(FileStorageError::Codec)
 }
 
-fn write_atomic_bytes<F>(
-    path: &Path,
-    bytes: &[u8],
-    replace: F,
-) -> Result<(), FileStorageError>
+fn write_atomic_bytes<F>(path: &Path, bytes: &[u8], replace: F) -> Result<(), FileStorageError>
 where
     F: FnOnce(&Path, &Path) -> io::Result<()>,
 {
@@ -604,8 +605,8 @@ where
         ))
     })?;
 
-    let (temp_path, mut temp_file) = create_temp_file(parent, file_name)
-        .map_err(FileStorageError::Io)?;
+    let (temp_path, mut temp_file) =
+        create_temp_file(parent, file_name).map_err(FileStorageError::Io)?;
 
     let write_result = (|| {
         temp_file.write_all(bytes).map_err(FileStorageError::Io)?;
@@ -633,14 +634,21 @@ where
     Ok(())
 }
 
-fn create_temp_file(parent: &Path, destination_name: &std::ffi::OsStr) -> io::Result<(PathBuf, File)> {
+fn create_temp_file(
+    parent: &Path,
+    destination_name: &std::ffi::OsStr,
+) -> io::Result<(PathBuf, File)> {
     for _ in 0..128 {
         let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let mut name = std::ffi::OsString::from(".");
         name.push(destination_name);
         name.push(format!(".{}.{}.tmp", std::process::id(), sequence));
         let temp_path = parent.join(name);
-        match OpenOptions::new().write(true).create_new(true).open(&temp_path) {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
             Ok(file) => return Ok((temp_path, file)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
@@ -657,7 +665,7 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
     {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::{
-            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
         };
 
         let source_wide: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -687,7 +695,7 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod file_tests {
-    use super::{load, save_atomic, write_atomic_bytes, FileStorageError};
+    use super::{FileStorageError, load, save_atomic, write_atomic_bytes};
     use crate::encode;
     use rasm_engine_document::{Document, Edit, History};
     use std::fs;
@@ -737,7 +745,10 @@ mod file_tests {
         fs::write(&path, &previous_bytes).expect("write previous");
 
         let error = write_atomic_bytes(&path, &replacement_bytes, |_source, _destination| {
-            Err(io::Error::new(io::ErrorKind::PermissionDenied, "injected commit failure"))
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "injected commit failure",
+            ))
         })
         .expect_err("commit should fail");
 
