@@ -503,3 +503,279 @@ mod tests {
         assert_eq!(decode(&bytes), Err(StorageError::InvalidJson));
     }
 }
+
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Maximum complete file size accepted by load, including the fixed header.
+pub const MAX_FILE_BYTES: u64 = (MAX_PAYLOAD_BYTES as u64) + (HEADER_SIZE as u64);
+
+static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Errors from filesystem-backed save and load operations.
+#[derive(Debug)]
+pub enum FileStorageError {
+    Io(io::Error),
+    Codec(StorageError),
+    FileTooLarge,
+    /// The replacement committed, but syncing the containing directory failed.
+    /// The new file may already be visible; callers must not assume the old file remains.
+    DirectorySyncAfterCommit(io::Error),
+}
+
+impl fmt::Display for FileStorageError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(formatter, "filesystem operation failed: {error}"),
+            Self::Codec(error) => write!(formatter, "project codec failed: {error}"),
+            Self::FileTooLarge => {
+                formatter.write_str("project file exceeds the configured size limit")
+            }
+            Self::DirectorySyncAfterCommit(error) => {
+                write!(
+                    formatter,
+                    "file was replaced, but directory sync failed: {error}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for FileStorageError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) | Self::DirectorySyncAfterCommit(error) => Some(error),
+            Self::Codec(error) => Some(error),
+            Self::FileTooLarge => None,
+        }
+    }
+}
+
+impl From<StorageError> for FileStorageError {
+    fn from(error: StorageError) -> Self {
+        Self::Codec(error)
+    }
+}
+
+/// Saves a document through a same-directory temporary file and atomic replacement.
+///
+/// A successful return means the replacement operation completed. On Unix, a
+/// directory-sync error is reported separately because the rename has already
+/// committed and cannot safely be rolled back.
+pub fn save_atomic(path: impl AsRef<Path>, document: &Document) -> Result<(), FileStorageError> {
+    let bytes = encode(document)?;
+    write_atomic_bytes(path.as_ref(), &bytes, replace_file)
+}
+
+/// Loads a project file after checking its size and validating its complete RASM payload.
+pub fn load(path: impl AsRef<Path>) -> Result<Document, FileStorageError> {
+    let path = path.as_ref();
+    let file = File::open(path).map_err(FileStorageError::Io)?;
+    let metadata_len = file.metadata().map_err(FileStorageError::Io)?.len();
+    if metadata_len > MAX_FILE_BYTES {
+        return Err(FileStorageError::FileTooLarge);
+    }
+
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(metadata_len).map_err(|_| FileStorageError::FileTooLarge)?,
+    );
+    file.take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(FileStorageError::Io)?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err(FileStorageError::FileTooLarge);
+    }
+    decode(&bytes).map_err(FileStorageError::Codec)
+}
+
+fn write_atomic_bytes<F>(path: &Path, bytes: &[u8], replace: F) -> Result<(), FileStorageError>
+where
+    F: FnOnce(&Path, &Path) -> io::Result<()>,
+{
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path.file_name().ok_or_else(|| {
+        FileStorageError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "destination path must include a file name",
+        ))
+    })?;
+
+    let (temp_path, mut temp_file) =
+        create_temp_file(parent, file_name).map_err(FileStorageError::Io)?;
+
+    let write_result = (|| {
+        temp_file.write_all(bytes).map_err(FileStorageError::Io)?;
+        temp_file.flush().map_err(FileStorageError::Io)?;
+        temp_file.sync_all().map_err(FileStorageError::Io)?;
+        Ok(())
+    })();
+    drop(temp_file);
+
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    if let Err(error) = replace(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(FileStorageError::Io(error));
+    }
+
+    #[cfg(unix)]
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(FileStorageError::DirectorySyncAfterCommit)?;
+
+    Ok(())
+}
+
+fn create_temp_file(
+    parent: &Path,
+    destination_name: &std::ffi::OsStr,
+) -> io::Result<(PathBuf, File)> {
+    for _ in 0..128 {
+        let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let mut name = std::ffi::OsString::from(".");
+        name.push(destination_name);
+        name.push(format!(".{}.{}.tmp", std::process::id(), sequence));
+        let temp_path = parent.join(name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not allocate a unique temporary project file",
+    ))
+}
+
+fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        };
+
+        let source_wide: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+        let destination_wide: Vec<u16> = destination
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let result = unsafe {
+            MoveFileExW(
+                source_wide.as_ptr(),
+                destination_wide.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if result == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(source, destination)
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::{FileStorageError, load, save_atomic, write_atomic_bytes};
+    use crate::encode;
+    use rasm_engine_document::{Document, Edit, History};
+    use std::fs;
+    use std::io;
+    use std::path::Path;
+
+    fn sample_document() -> Document {
+        let mut document = Document::new(640, 480).expect("document");
+        let layer = document.layers()[0].id();
+        let mut history = History::default();
+        history
+            .execute(&mut document, Edit::rename_layer(layer, "Saved"))
+            .expect("rename");
+        document
+    }
+
+    #[test]
+    fn saves_and_loads_a_project_file() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("drawing.rasm");
+        let document = sample_document();
+
+        save_atomic(&path, &document).expect("save");
+        assert_eq!(load(&path).expect("load"), document);
+    }
+
+    #[test]
+    fn replaces_an_existing_project_without_partial_content() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("drawing.rasm");
+        let first = Document::new(100, 100).expect("first");
+        let second = Document::new(900, 700).expect("second");
+
+        save_atomic(&path, &first).expect("initial save");
+        save_atomic(&path, &second).expect("replace");
+        assert_eq!(load(&path).expect("load"), second);
+    }
+
+    #[test]
+    fn failed_commit_keeps_previous_file_and_cleans_temporary_file() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("drawing.rasm");
+        let previous = Document::new(100, 100).expect("previous");
+        let replacement = Document::new(900, 700).expect("replacement");
+        let previous_bytes = encode(&previous).expect("encode");
+        let replacement_bytes = encode(&replacement).expect("encode");
+        fs::write(&path, &previous_bytes).expect("write previous");
+
+        let error = write_atomic_bytes(&path, &replacement_bytes, |_source, _destination| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "injected commit failure",
+            ))
+        })
+        .expect_err("commit should fail");
+
+        assert!(matches!(error, FileStorageError::Io(_)));
+        assert_eq!(fs::read(&path).expect("read previous"), previous_bytes);
+        let remaining: Vec<_> = fs::read_dir(directory.path())
+            .expect("list directory")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0], "drawing.rasm");
+    }
+
+    #[test]
+    fn malformed_project_is_rejected_without_changing_source_file() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("broken.rasm");
+        fs::write(&path, b"not a RASM file").expect("write");
+        let before = fs::read(&path).expect("read");
+
+        assert!(load(&path).is_err());
+        assert_eq!(fs::read(&path).expect("read again"), before);
+    }
+
+    #[test]
+    fn destination_must_have_a_file_name() {
+        let result = write_atomic_bytes(Path::new(""), b"bytes", |_source, _destination| Ok(()));
+        assert!(matches!(result, Err(FileStorageError::Io(_))));
+    }
+}
