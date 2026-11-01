@@ -1182,7 +1182,7 @@ mod tests {
 
     use super::{
         DEFAULT_HISTORY_LIMIT, Document, DocumentError, Edit, EditResult, History, Layer, LayerId,
-        MAX_LAYER_NAME_BYTES, MAX_STROKE_SAMPLES, Stroke, StrokeId,
+        MAX_LAYER_NAME_BYTES, MAX_STROKE_SAMPLES, Stroke, StrokeColor, StrokeId,
     };
 
     fn document() -> Document {
