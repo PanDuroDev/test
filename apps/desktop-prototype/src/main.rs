@@ -721,7 +721,7 @@ impl GpuRenderer {
         active_layer_id: LayerId,
         panel_scroll: usize,
         viewport: CanvasViewport,
-    ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+    ) -> (wgpu::Buffer, wgpu::Buffer, u32, u32) {
         let mut vertices = Vec::<GpuVertex>::new();
         let mut indices = Vec::<u32>::new();
 
@@ -752,6 +752,7 @@ impl GpuRenderer {
             self.append_live_stroke(samples, brush, viewport, &mut vertices, &mut indices);
         }
 
+        let canvas_index_count = indices.len().min(u32::MAX as usize) as u32;
         let mut panel_vertices = Vec::new();
         let mut panel_indices = Vec::new();
         layer_panel::append_geometry(
@@ -791,7 +792,10 @@ impl GpuRenderer {
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
-        let index_count = indices.len().min(u32::MAX as usize) as u32;
+        let panel_index_count = indices
+            .len()
+            .saturating_sub(canvas_index_count as usize)
+            .min(u32::MAX as usize) as u32;
         if indices.is_empty() {
             indices.push(0);
         }
@@ -802,7 +806,7 @@ impl GpuRenderer {
                 contents: bytemuck::cast_slice(&indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
-        (vertex_buffer, index_buffer, index_count)
+        (vertex_buffer, index_buffer, canvas_index_count, panel_index_count)
     }
 
     fn render(
@@ -847,7 +851,7 @@ impl GpuRenderer {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let (vertex_buffer, index_buffer, index_count) =
+        let (vertex_buffer, index_buffer, canvas_index_count, panel_index_count) =
             self.make_mesh_buffers(
                 document,
                 active_samples,
@@ -887,12 +891,28 @@ impl GpuRenderer {
             });
 
             let (scissor_x, scissor_y, scissor_width, scissor_height) = viewport.scissor_rect();
-            if index_count > 0 && scissor_width > 0 && scissor_height > 0 {
-                pass.set_scissor_rect(scissor_x, scissor_y, scissor_width, scissor_height);
+            if (canvas_index_count > 0 || panel_index_count > 0)
+                && scissor_width > 0
+                && scissor_height > 0
+            {
                 pass.set_pipeline(&self.render_pipeline);
                 pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..index_count, 0, 0..1);
+
+                if canvas_index_count > 0 {
+                    pass.set_scissor_rect(scissor_x, scissor_y, scissor_width, scissor_height);
+                    pass.draw_indexed(0..canvas_index_count, 0, 0..1);
+                }
+
+                if panel_index_count > 0 {
+                    // UI is outside the canvas letterbox in some window sizes.
+                    pass.set_scissor_rect(0, 0, self.config.width, self.config.height);
+                    pass.draw_indexed(
+                        canvas_index_count..canvas_index_count + panel_index_count,
+                        0,
+                        0..1,
+                    );
+                }
             }
         }
 
