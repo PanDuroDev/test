@@ -534,7 +534,11 @@ mod tests {
             vertex.position.iter().all(|value| value.is_finite())
                 && vertex.color.iter().all(|value| value.is_finite())
         }));
-        assert!(indices.iter().all(|index| (*index as usize) < vertices.len()));
+        assert!(
+            indices
+                .iter()
+                .all(|index| (*index as usize) < vertices.len())
+        );
     }
 
     #[test]
