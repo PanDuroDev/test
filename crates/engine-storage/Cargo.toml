@@ -1,0 +1,13 @@
+[package]
+name = "rasm-engine-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Versioned local project container and validated document codec for Rasm Studio"
+
+[dependencies]
+crc32fast.workspace = true
+rasm-engine-document = { path = "../engine-document" }
+serde.workspace = true
+serde_json.workspace = true
