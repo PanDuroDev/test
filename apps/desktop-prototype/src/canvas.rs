@@ -356,6 +356,7 @@ impl CanvasDocument {
     }
 
     /// Commits a stroke to a specific layer using the legacy default colour.
+    #[cfg(test)]
     pub fn commit_stroke_to(
         &mut self,
         layer_id: LayerId,
@@ -409,6 +410,7 @@ impl CanvasDocument {
     }
 
     /// Returns the id of the most recent stroke on the top layer.
+    #[cfg(test)]
     pub fn last_stroke_id(&self) -> Option<u64> {
         let layer = self.document.layers().last()?;
         layer.strokes().last().map(|stroke| stroke.id().get())
@@ -523,7 +525,7 @@ mod tests {
         DOCUMENT_WIDTH, ERASER_COLOR, MAX_BRUSH_RADIUS, MIN_BRUSH_RADIUS, PALETTE, ViewState,
     };
     use glam::DVec2;
-    use rasm_engine_document::DocumentError;
+    use rasm_engine_document::{Document, DocumentError, StrokeColor};
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
     fn sample_stroke() -> Vec<StrokeSample> {
