@@ -13,7 +13,7 @@ const HEADER_HEIGHT: f32 = 32.0;
 const ROW_HEIGHT: f32 = 28.0;
 const PANEL_BOTTOM_PADDING: f32 = 7.0;
 const MAX_VISIBLE_ROWS: usize = 14;
-const TEXT_SCALE: f32 = 1.0;
+const TEXT_SCALE: f32 = 1.25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayerPanelAction {
