@@ -382,7 +382,11 @@ impl BrushSettings {
 
     /// Colour written by the next stroke; the eraser overrides the palette.
     pub const fn color(self) -> [f32; 4] {
-        if self.eraser { ERASER_COLOR } else { self.color }
+        if self.eraser {
+            ERASER_COLOR
+        } else {
+            self.color
+        }
     }
 
     pub const fn is_eraser(self) -> bool {
