@@ -1004,15 +1004,23 @@ impl App {
         }
     }
 
+    fn file_dialog(&self, title: &str) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new()
+            .add_filter("Rasm project", &["rasm"])
+            .set_title(title);
+        match &self.window {
+            Some(window) => dialog.set_parent(window.as_ref()),
+            None => dialog,
+        }
+    }
+
     fn handle_project_action(&mut self, action: ProjectAction) {
         let current_path = lock(&self.input).current_path.clone();
         let selected_path = match action {
-            ProjectAction::Open => rfd::FileDialog::new()
-                .add_filter("Rasm project", &["rasm"])
-                .pick_file(),
+            ProjectAction::Open => self.file_dialog("Open Rasm project").pick_file(),
             ProjectAction::Save if current_path.is_some() => current_path,
-            ProjectAction::Save | ProjectAction::SaveAs => rfd::FileDialog::new()
-                .add_filter("Rasm project", &["rasm"])
+            ProjectAction::Save | ProjectAction::SaveAs => self
+                .file_dialog("Save Rasm project")
                 .set_file_name("Untitled.rasm")
                 .save_file(),
         };
