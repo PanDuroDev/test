@@ -377,7 +377,7 @@
 
 **العمل المنفذ:** `CanvasViewport::fit_view` يطبّق `ViewState` فوق fit، و`CanvasDocument` يحتفظ بأبعاد النافذة لإعادة بناء أساس fit عند zoom/pan/resize. أضيفت اختبارات headless في `canvas.rs` لتثبات النقطة تحت المؤشر، وحدود التكبير، وإزاحة pan، وإعادة الضبط، والحفاظ على التكبير بعد resize، ورُبطت الحوادث في `main.rs`.
 
-**التحقق:** CI_PLACEHOLDER
+**التحقق:** [CI 41263713391](https://github.com/PanDuroDev/test/actions/runs/41263713391) — نجحت الوظائف الست: fmt وclippy، اختبارات Linux/Windows/macOS، بناء FFI لـAndroid، وبناء Windows prototype artifact. لم يُجرَ أي بناء أو تشغيل محلي؛ التحقق كله عبر CI.
 
 **الحدود:** لا يوجد دوران للوحة ولا لوحة أدوات ولا إدارة طبقات ولا «fit to selection»؛ حدود التكبير ثابتة بين 0.25× و8×.
 
@@ -520,4 +520,4 @@ target/renderer-spike.png
 - 2026-11-01: اكتمل تنفيذ المرحلة 6B2 عبر PR #26: `save_atomic` و`load` مع الاستبدال الذري على Windows وUnix، وحدود قراءة صارمة واختبارات فشل commit وتنظيف الملفات المؤقتة. نجحت الوظائف الست في CI #41258015343، وأُنتج Windows prototype artifact. لم يُثبت تشغيل EXE الجديد يدويًا، ولا يشمل هذا العمل autosave أو journal أو crash recovery.
 
 - 2026-11-01: فُتح Issue #27 وفرع `desktop/document-backed-canvas` لربط prototype بنموذج Document/History، وفصل document coordinates عن بكسلات النافذة، وإضافة Undo/Redo عبر اختصارات لوحة المفاتيح. أضيفت حالة Canvas وviewport mapping واختباراتها، ثم رُبط إدخال mouse/Windows pen والعارض بالمستند. اكتمل CI #41260460992 و#41260977695 بجميع الوظائف الست بما فيها Windows prototype artifact؛ دُمج PR #28 بالالتزام `5f39d46c082aac621d91276f831c6d7e07e36fe8` وأُغلق Issue #27.
-- 2026-11-01: فُتح Issue #29 وفرع `desktop/canvas-pan-zoom` لإضافة zoom/pan للوحة وتصفير modifiers عند فقدان التركيز؛ CI_PLACEHOLDER
+- 2026-11-01: فُتح Issue #29 وفرع `desktop/canvas-pan-zoom` لإضافة zoom/pan للوحة وتصفير modifiers عند فقدان التركيز، وحفظ العرض بعد resize؛ نجح CI في جميع وظائفه ([CI 41263713391](https://github.com/PanDuroDev/test/actions/runs/41263713391)) والـPR رقم #30.
