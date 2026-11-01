@@ -34,11 +34,6 @@ impl ViewState {
         self.zoom
     }
 
-    #[cfg(test)]
-    pub const fn pan(self) -> DVec2 {
-        self.pan
-    }
-
     pub fn reset(&mut self) {
         *self = Self::default();
     }
