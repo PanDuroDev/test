@@ -866,8 +866,7 @@ impl GpuRenderer {
                 active_samples,
                 brush,
                 stroke_colors,
-                active_layer_id,
-                panel_scroll,
+                layer_panel,
                 viewport,
             );
         let mut encoder = self
