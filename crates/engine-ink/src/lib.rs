@@ -135,6 +135,26 @@ impl BrushConfig {
         })
     }
 
+    pub const fn base_radius(self) -> f64 {
+        self.base_radius
+    }
+
+    pub const fn minimum_pressure_ratio(self) -> f64 {
+        self.minimum_pressure_ratio
+    }
+
+    pub const fn pressure_exponent(self) -> f64 {
+        self.pressure_exponent
+    }
+
+    pub const fn spacing_ratio(self) -> f64 {
+        self.spacing_ratio
+    }
+
+    pub const fn max_dabs(self) -> usize {
+        self.max_dabs
+    }
+
     /// Returns the brush radius produced by a normalized pressure value.
     pub fn radius_at_pressure(self, pressure: f64) -> f64 {
         let pressure_curve = pressure.clamp(0.0, 1.0).powf(self.pressure_exponent);
