@@ -28,11 +28,7 @@ impl CanvasViewport {
         screen_width: u32,
         screen_height: u32,
     ) -> Option<Self> {
-        if document_width == 0
-            || document_height == 0
-            || screen_width == 0
-            || screen_height == 0
-        {
+        if document_width == 0 || document_height == 0 || screen_width == 0 || screen_height == 0 {
             return None;
         }
 
@@ -117,7 +113,12 @@ impl CanvasViewport {
         let bottom = (self.screen_origin.y + self.screen_size.y)
             .ceil()
             .clamp(0.0, self.screen_height) as u32;
-        (left, top, right.saturating_sub(left), bottom.saturating_sub(top))
+        (
+            left,
+            top,
+            right.saturating_sub(left),
+            bottom.saturating_sub(top),
+        )
     }
 }
 
@@ -132,13 +133,9 @@ pub struct CanvasDocument {
 impl CanvasDocument {
     pub fn new(screen_width: u32, screen_height: u32) -> Result<Self, DocumentError> {
         let document = Document::new(DOCUMENT_WIDTH, DOCUMENT_HEIGHT)?;
-        let viewport = CanvasViewport::fit(
-            DOCUMENT_WIDTH,
-            DOCUMENT_HEIGHT,
-            screen_width,
-            screen_height,
-        )
-        .expect("a desktop canvas requires a non-zero window size");
+        let viewport =
+            CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, screen_width, screen_height)
+                .expect("a desktop canvas requires a non-zero window size");
 
         Ok(Self {
             document,
@@ -223,25 +220,33 @@ mod tests {
 
     #[test]
     fn fit_preserves_document_aspect_ratio_and_centers_letterbox() {
-        let viewport = CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640)
-            .expect("valid viewport");
-        assert!((viewport.screen_size().x / viewport.screen_size().y
-            - f64::from(DOCUMENT_WIDTH) / f64::from(DOCUMENT_HEIGHT))
+        let viewport =
+            CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640).expect("valid viewport");
+        assert!(
+            (viewport.screen_size().x / viewport.screen_size().y
+                - f64::from(DOCUMENT_WIDTH) / f64::from(DOCUMENT_HEIGHT))
             .abs()
-            < 1.0e-9);
+                < 1.0e-9
+        );
         assert!((viewport.screen_origin().x - 0.0).abs() < 1.0e-9);
         assert!(viewport.screen_origin().y > 0.0);
     }
 
     #[test]
     fn screen_mapping_round_trips_and_rejects_letterbox_space() {
-        let viewport = CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640)
-            .expect("valid viewport");
+        let viewport =
+            CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640).expect("valid viewport");
         let document_point = DVec2::new(480.0, 540.0);
         let screen_point = viewport.transform().canvas_to_screen(document_point);
-        let mapped = viewport.screen_to_document(screen_point).expect("inside canvas");
+        let mapped = viewport
+            .screen_to_document(screen_point)
+            .expect("inside canvas");
         assert!(mapped.distance(document_point) < 1.0e-8);
-        assert!(viewport.screen_to_document(DVec2::new(480.0, 10.0)).is_none());
+        assert!(
+            viewport
+                .screen_to_document(DVec2::new(480.0, 10.0))
+                .is_none()
+        );
     }
 
     #[test]
@@ -254,8 +259,19 @@ mod tests {
         let wide_screen = wide.transform().canvas_to_screen(point);
         let narrow_screen = narrow.transform().canvas_to_screen(point);
         assert_ne!(wide_screen, narrow_screen);
-        assert!(wide.screen_to_document(wide_screen).unwrap().distance(point) < 1.0e-8);
-        assert!(narrow.screen_to_document(narrow_screen).unwrap().distance(point) < 1.0e-8);
+        assert!(
+            wide.screen_to_document(wide_screen)
+                .unwrap()
+                .distance(point)
+                < 1.0e-8
+        );
+        assert!(
+            narrow
+                .screen_to_document(narrow_screen)
+                .unwrap()
+                .distance(point)
+                < 1.0e-8
+        );
     }
 
     #[test]
@@ -278,7 +294,9 @@ mod tests {
     #[test]
     fn empty_input_does_not_create_a_history_entry() {
         let mut canvas = CanvasDocument::new(960, 640).expect("canvas");
-        canvas.commit_stroke(Vec::new(), BrushConfig::default()).expect("empty no-op");
+        canvas
+            .commit_stroke(Vec::new(), BrushConfig::default())
+            .expect("empty no-op");
         assert!(!canvas.can_undo());
     }
 }
