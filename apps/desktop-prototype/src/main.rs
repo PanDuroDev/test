@@ -1485,6 +1485,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn save_dialog_extension_is_appended_without_replacing_existing_suffix() {
+        assert_eq!(
+            append_rasm_extension(PathBuf::from("drawing")),
+            PathBuf::from("drawing.rasm")
+        );
+        assert_eq!(
+            append_rasm_extension(PathBuf::from("drawing.backup")),
+            PathBuf::from("drawing.backup.rasm")
+        );
+        assert_eq!(
+            append_rasm_extension(PathBuf::from("drawing.RASM")),
+            PathBuf::from("drawing.RASM")
+        );
+    }
+
+    #[test]
+    fn save_dialog_extension_is_appended_to_dotfiles() {
+        assert_eq!(
+            append_rasm_extension(PathBuf::from(".sketch")),
+            PathBuf::from(".sketch.rasm")
+        );
+    }
+
+    #[test]
     fn demo_stroke_is_stored_in_the_document_and_produces_a_mesh() {
         let input = InputState::with_demo_stroke(960.0, 640.0);
         let stroke = &input.canvas.document().layers()[0].strokes()[0];
