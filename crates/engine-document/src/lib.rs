@@ -3,7 +3,11 @@
 //! The document stores original stroke samples and brush settings. GPU meshes and
 //! raster tiles are derived data and must remain outside this crate.
 
+use std::collections::HashSet;
 use std::fmt;
+
+use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 use rasm_engine_ink::{BrushConfig, StrokeSample};
 
@@ -15,6 +19,54 @@ pub const MAX_STROKE_SAMPLES: usize = 1_000_000;
 
 /// Default maximum number of reversible edits retained by History.
 pub const DEFAULT_HISTORY_LIMIT: usize = 256;
+
+/// Version-independent, serialization-friendly snapshot of a document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentSnapshot {
+    pub width_px: u32,
+    pub height_px: u32,
+    pub next_layer_id: u64,
+    pub next_stroke_id: u64,
+    pub layers: Vec<LayerSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LayerSnapshot {
+    pub id: u64,
+    pub name: String,
+    pub visible: bool,
+    pub opacity: f32,
+    pub strokes: Vec<StrokeSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StrokeSnapshot {
+    pub id: u64,
+    pub brush: BrushSnapshot,
+    pub samples: Vec<StrokeSampleSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrushSnapshot {
+    pub base_radius: f64,
+    pub minimum_pressure_ratio: f64,
+    pub pressure_exponent: f64,
+    pub spacing_ratio: f64,
+    pub max_dabs: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StrokeSampleSnapshot {
+    pub x: f64,
+    pub y: f64,
+    pub pressure: Option<f32>,
+    pub timestamp_ns: u64,
+}
 
 /// Stable identifier for a layer within a document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -40,6 +92,13 @@ impl StrokeId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentError {
     InvalidCanvasSize,
+    EmptyDocumentLayers,
+    InvalidLayerIdentifier,
+    InvalidStrokeIdentifier,
+    InvalidNextLayerIdentifier,
+    InvalidNextStrokeIdentifier,
+    InvalidPressure,
+    InvalidSamplePosition,
     EmptyLayerName,
     LayerNameTooLong,
     LayerNotFound,
@@ -62,6 +121,13 @@ impl fmt::Display for DocumentError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             Self::InvalidCanvasSize => "document width and height must be greater than zero",
+            Self::EmptyDocumentLayers => "a document snapshot must contain at least one layer",
+            Self::InvalidLayerIdentifier => "layer identifiers must be non-zero and unique",
+            Self::InvalidStrokeIdentifier => "stroke identifiers must be non-zero and unique",
+            Self::InvalidNextLayerIdentifier => "next layer identifier must exceed all stored layer identifiers",
+            Self::InvalidNextStrokeIdentifier => "next stroke identifier must exceed all stored stroke identifiers",
+            Self::InvalidPressure => "stroke sample pressure must be finite and within [0, 1]",
+            Self::InvalidSamplePosition => "stroke sample position must be finite",
             Self::EmptyLayerName => "layer name cannot be empty",
             Self::LayerNameTooLong => "layer name exceeds the configured byte limit",
             Self::LayerNotFound => "the requested layer does not exist",
@@ -185,6 +251,134 @@ impl Document {
 
     pub const fn height_px(&self) -> u32 {
         self.height_px
+    }
+
+    /// Creates a lossless, serialization-friendly snapshot of the document.
+    pub fn snapshot(&self) -> DocumentSnapshot {
+        DocumentSnapshot {
+            width_px: self.width_px,
+            height_px: self.height_px,
+            next_layer_id: self.next_layer_id,
+            next_stroke_id: self.next_stroke_id,
+            layers: self.layers.iter().map(|layer| LayerSnapshot {
+                id: layer.id.get(),
+                name: layer.name.clone(),
+                visible: layer.visible,
+                opacity: layer.opacity,
+                strokes: layer.strokes.iter().map(|stroke| StrokeSnapshot {
+                    id: stroke.id.get(),
+                    brush: BrushSnapshot {
+                        base_radius: stroke.brush.base_radius(),
+                        minimum_pressure_ratio: stroke.brush.minimum_pressure_ratio(),
+                        pressure_exponent: stroke.brush.pressure_exponent(),
+                        spacing_ratio: stroke.brush.spacing_ratio(),
+                        max_dabs: stroke.brush.max_dabs(),
+                    },
+                    samples: stroke.samples.iter().map(|sample| StrokeSampleSnapshot {
+                        x: sample.position().x,
+                        y: sample.position().y,
+                        pressure: sample.pressure(),
+                        timestamp_ns: sample.timestamp_ns(),
+                    }).collect(),
+                }).collect(),
+            }).collect(),
+        }
+    }
+
+    /// Rebuilds a document only after validating every persisted invariant.
+    pub fn from_snapshot(snapshot: DocumentSnapshot) -> Result<Self, DocumentError> {
+        if snapshot.width_px == 0 || snapshot.height_px == 0 {
+            return Err(DocumentError::InvalidCanvasSize);
+        }
+        if snapshot.layers.is_empty() {
+            return Err(DocumentError::EmptyDocumentLayers);
+        }
+
+        let mut layer_ids = HashSet::with_capacity(snapshot.layers.len());
+        let mut stroke_ids = HashSet::new();
+        let mut max_layer_id = 0_u64;
+        let mut max_stroke_id = 0_u64;
+        let mut layers = Vec::with_capacity(snapshot.layers.len());
+
+        for layer in snapshot.layers {
+            if layer.id == 0 || !layer_ids.insert(layer.id) {
+                return Err(DocumentError::InvalidLayerIdentifier);
+            }
+            max_layer_id = max_layer_id.max(layer.id);
+            validate_layer_name(&layer.name)?;
+            if !layer.opacity.is_finite() || !(0.0..=1.0).contains(&layer.opacity) {
+                return Err(DocumentError::InvalidOpacity);
+            }
+
+            let mut strokes = Vec::with_capacity(layer.strokes.len());
+            for stroke in layer.strokes {
+                if stroke.id == 0 || !stroke_ids.insert(stroke.id) {
+                    return Err(DocumentError::InvalidStrokeIdentifier);
+                }
+                max_stroke_id = max_stroke_id.max(stroke.id);
+                if stroke.samples.is_empty() {
+                    return Err(DocumentError::EmptyStroke);
+                }
+                if stroke.samples.len() > MAX_STROKE_SAMPLES {
+                    return Err(DocumentError::TooManyStrokeSamples);
+                }
+
+                let brush = BrushConfig::new(
+                    stroke.brush.base_radius,
+                    stroke.brush.minimum_pressure_ratio,
+                    stroke.brush.pressure_exponent,
+                    stroke.brush.spacing_ratio,
+                    stroke.brush.max_dabs,
+                ).map_err(|_| DocumentError::InvalidBrushConfig)?;
+
+                let mut samples = Vec::with_capacity(stroke.samples.len());
+                for source in stroke.samples {
+                    let sample = StrokeSample::new(
+                        DVec2::new(source.x, source.y),
+                        source.pressure,
+                        source.timestamp_ns,
+                    ).map_err(|error| match error {
+                        rasm_engine_ink::StrokeError::InvalidPressure => DocumentError::InvalidPressure,
+                        _ => DocumentError::InvalidSamplePosition,
+                    })?;
+                    if samples.last().is_some_and(|previous: &StrokeSample| {
+                        sample.timestamp_ns() < previous.timestamp_ns()
+                    }) {
+                        return Err(DocumentError::NonMonotonicStrokeTimestamps);
+                    }
+                    samples.push(sample);
+                }
+
+                strokes.push(Stroke {
+                    id: StrokeId(stroke.id),
+                    samples,
+                    brush,
+                });
+            }
+
+            layers.push(Layer {
+                id: LayerId(layer.id),
+                name: layer.name,
+                visible: layer.visible,
+                opacity: layer.opacity,
+                strokes,
+            });
+        }
+
+        if snapshot.next_layer_id == 0 || snapshot.next_layer_id <= max_layer_id {
+            return Err(DocumentError::InvalidNextLayerIdentifier);
+        }
+        if snapshot.next_stroke_id == 0 || snapshot.next_stroke_id <= max_stroke_id {
+            return Err(DocumentError::InvalidNextStrokeIdentifier);
+        }
+
+        Ok(Self {
+            width_px: snapshot.width_px,
+            height_px: snapshot.height_px,
+            layers,
+            next_layer_id: snapshot.next_layer_id,
+            next_stroke_id: snapshot.next_stroke_id,
+        })
     }
 
     /// Returns layers in bottom-to-top compositing order.
