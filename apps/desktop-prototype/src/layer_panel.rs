@@ -40,7 +40,12 @@ struct PanelLayout {
     scroll_offset: usize,
 }
 
-fn layout(screen_width: u32, screen_height: u32, layer_count: usize, scroll: usize) -> Option<PanelLayout> {
+fn layout(
+    screen_width: u32,
+    screen_height: u32,
+    layer_count: usize,
+    scroll: usize,
+) -> Option<PanelLayout> {
     if screen_width < 160 || screen_height < 96 || layer_count == 0 {
         return None;
     }
@@ -75,7 +80,13 @@ pub fn max_scroll(document: &Document, screen_height: u32) -> usize {
         .unwrap_or(0)
 }
 
-pub fn contains(position: DVec2, screen_width: u32, screen_height: u32, document: &Document, scroll: usize) -> bool {
+pub fn contains(
+    position: DVec2,
+    screen_width: u32,
+    screen_height: u32,
+    document: &Document,
+    scroll: usize,
+) -> bool {
     let Some(panel) = layout(screen_width, screen_height, document.layers().len(), scroll) else {
         return false;
     };
@@ -140,14 +151,60 @@ pub fn append_geometry(
     };
 
     let width = panel.right - panel.left;
-    rect(vertices, indices, panel.left - 1.0, panel.top - 1.0, width + 2.0, panel.bottom - panel.top + 2.0, [0.025, 0.032, 0.040, 1.0]);
-    rect(vertices, indices, panel.left, panel.top, width, panel.bottom - panel.top, [0.075, 0.090, 0.108, 1.0]);
-    rect(vertices, indices, panel.left, panel.top, width, HEADER_HEIGHT, [0.105, 0.128, 0.150, 1.0]);
-    draw_text(vertices, indices, panel.left + 10.0, panel.top + 11.0, "LAYERS", [0.88, 0.93, 0.97, 1.0]);
+    rect(
+        vertices,
+        indices,
+        panel.left - 1.0,
+        panel.top - 1.0,
+        width + 2.0,
+        panel.bottom - panel.top + 2.0,
+        [0.025, 0.032, 0.040, 1.0],
+    );
+    rect(
+        vertices,
+        indices,
+        panel.left,
+        panel.top,
+        width,
+        panel.bottom - panel.top,
+        [0.075, 0.090, 0.108, 1.0],
+    );
+    rect(
+        vertices,
+        indices,
+        panel.left,
+        panel.top,
+        width,
+        HEADER_HEIGHT,
+        [0.105, 0.128, 0.150, 1.0],
+    );
+    draw_text(
+        vertices,
+        indices,
+        panel.left + 10.0,
+        panel.top + 11.0,
+        "LAYERS",
+        [0.88, 0.93, 0.97, 1.0],
+    );
 
     let add_x = panel.right - 54.0;
-    rect(vertices, indices, add_x, panel.top + 5.0, 46.0, 22.0, [0.035, 0.35, 0.42, 1.0]);
-    draw_text(vertices, indices, add_x + 11.0, panel.top + 12.0, "ADD", [0.96, 0.99, 1.0, 1.0]);
+    rect(
+        vertices,
+        indices,
+        add_x,
+        panel.top + 5.0,
+        46.0,
+        22.0,
+        [0.035, 0.35, 0.42, 1.0],
+    );
+    draw_text(
+        vertices,
+        indices,
+        add_x + 11.0,
+        panel.top + 12.0,
+        "ADD",
+        [0.96, 0.99, 1.0, 1.0],
+    );
 
     for row in 0..panel.visible_rows {
         let display_index = panel.scroll_offset + row;
@@ -165,10 +222,30 @@ pub fn append_geometry(
         } else {
             [0.105, 0.123, 0.145, 1.0]
         };
-        rect(vertices, indices, panel.left + 1.0, y, width - 2.0, ROW_HEIGHT - 1.0, background);
+        rect(
+            vertices,
+            indices,
+            panel.left + 1.0,
+            y,
+            width - 2.0,
+            ROW_HEIGHT - 1.0,
+            background,
+        );
 
-        let name = layer.name().chars().take(11).collect::<String>().to_ascii_uppercase();
-        draw_text(vertices, indices, panel.left + 9.0, y + 10.0, &name, [0.88, 0.91, 0.94, 1.0]);
+        let name = layer
+            .name()
+            .chars()
+            .take(11)
+            .collect::<String>()
+            .to_ascii_uppercase();
+        draw_text(
+            vertices,
+            indices,
+            panel.left + 9.0,
+            y + 10.0,
+            &name,
+            [0.88, 0.91, 0.94, 1.0],
+        );
 
         let visibility_color = if layer.is_visible() {
             [0.45, 0.86, 0.70, 1.0]
@@ -183,10 +260,33 @@ pub fn append_geometry(
             if layer.is_visible() { "ON" } else { "OFF" },
             visibility_color,
         );
-        draw_text(vertices, indices, panel.right - 21.0, y + 10.0, "X", [0.95, 0.55, 0.55, 1.0]);
+        draw_text(
+            vertices,
+            indices,
+            panel.right - 21.0,
+            y + 10.0,
+            "X",
+            [0.95, 0.55, 0.55, 1.0],
+        );
 
-        rect(vertices, indices, panel.right - 74.0, y + 4.0, 1.0, ROW_HEIGHT - 9.0, [0.20, 0.24, 0.27, 1.0]);
-        rect(vertices, indices, panel.right - 34.0, y + 4.0, 1.0, ROW_HEIGHT - 9.0, [0.20, 0.24, 0.27, 1.0]);
+        rect(
+            vertices,
+            indices,
+            panel.right - 74.0,
+            y + 4.0,
+            1.0,
+            ROW_HEIGHT - 9.0,
+            [0.20, 0.24, 0.27, 1.0],
+        );
+        rect(
+            vertices,
+            indices,
+            panel.right - 34.0,
+            y + 4.0,
+            1.0,
+            ROW_HEIGHT - 9.0,
+            [0.20, 0.24, 0.27, 1.0],
+        );
     }
 }
 
@@ -205,10 +305,22 @@ fn rect(
 
     let base = vertices.len() as u32;
     vertices.extend([
-        PanelVertex { position: [x, y], color },
-        PanelVertex { position: [x + width, y], color },
-        PanelVertex { position: [x + width, y + height], color },
-        PanelVertex { position: [x, y + height], color },
+        PanelVertex {
+            position: [x, y],
+            color,
+        },
+        PanelVertex {
+            position: [x + width, y],
+            color,
+        },
+        PanelVertex {
+            position: [x + width, y + height],
+            color,
+        },
+        PanelVertex {
+            position: [x, y + height],
+            color,
+        },
     ]);
     indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
 }
@@ -332,7 +444,10 @@ mod tests {
         let mut history = History::default();
         for index in 0..20 {
             history
-                .execute(&mut document, Edit::add_layer(format!("Layer {}", index + 3)))
+                .execute(
+                    &mut document,
+                    Edit::add_layer(format!("Layer {}", index + 3)),
+                )
                 .expect("add layer");
         }
 
@@ -368,6 +483,10 @@ mod tests {
             vertex.position.iter().all(|value| value.is_finite())
                 && vertex.color.iter().all(|value| value.is_finite())
         }));
-        assert!(indices.iter().all(|index| (*index as usize) < vertices.len()));
+        assert!(
+            indices
+                .iter()
+                .all(|index| (*index as usize) < vertices.len())
+        );
     }
 }
