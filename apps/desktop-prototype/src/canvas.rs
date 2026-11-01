@@ -141,12 +141,13 @@ impl CanvasViewport {
 
     /// Maps a point only when it is inside the fitted canvas, excluding letterbox space.
     pub fn screen_to_document(self, point: DVec2) -> Option<DVec2> {
+        // Half-open rect: the right/bottom edges belong to the excluded letterbox.
         if !point.x.is_finite()
             || !point.y.is_finite()
             || point.x < self.screen_origin.x
             || point.y < self.screen_origin.y
-            || point.x > self.screen_origin.x + self.screen_size.x
-            || point.y > self.screen_origin.y + self.screen_size.y
+            || point.x >= self.screen_origin.x + self.screen_size.x
+            || point.y >= self.screen_origin.y + self.screen_size.y
         {
             return None;
         }
@@ -154,8 +155,8 @@ impl CanvasViewport {
         let document_point = self.transform.screen_to_canvas(point);
         if document_point.x < 0.0
             || document_point.y < 0.0
-            || document_point.x > self.document_size.x
-            || document_point.y > self.document_size.y
+            || document_point.x >= self.document_size.x
+            || document_point.y >= self.document_size.y
         {
             return None;
         }
@@ -490,6 +491,19 @@ mod tests {
         let fitted = CanvasViewport::fit(DOCUMENT_WIDTH, DOCUMENT_HEIGHT, 960, 640)
             .expect("fitted viewport");
         assert_eq!(canvas.viewport().transform(), fitted.transform());
+    }
+
+    #[test]
+    fn hit_testing_excludes_the_far_edges() {
+        let canvas = CanvasDocument::new(960, 640).expect("canvas");
+        let viewport = canvas.viewport();
+        let far_edge = viewport.screen_origin() + viewport.screen_size();
+        assert!(viewport.screen_to_document(far_edge).is_none());
+        assert!(
+            viewport
+                .screen_to_document(far_edge - DVec2::new(1.0, 1.0))
+                .is_some()
+        );
     }
 
     #[test]
