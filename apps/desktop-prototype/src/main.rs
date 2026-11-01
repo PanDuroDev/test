@@ -445,7 +445,12 @@ impl GpuRenderer {
     ///
     /// shortcut: the in-progress stroke is tessellated every frame; cache it only
     /// if profiling shows the live stroke is the bottleneck.
-    fn cached_stroke(&mut self, id: u64, samples: &[StrokeSample], brush: BrushConfig) -> &CachedStroke {
+    fn cached_stroke(
+        &mut self,
+        id: u64,
+        samples: &[StrokeSample],
+        brush: BrushConfig,
+    ) -> &CachedStroke {
         self.stroke_cache.entry(id).or_insert_with(|| {
             let Ok(dabs) = tessellate_stroke(samples, brush) else {
                 return CachedStroke::default();
@@ -527,8 +532,7 @@ impl GpuRenderer {
                 );
             }
         }
-        self.stroke_cache
-            .retain(|id, _| visible_ids.contains(id));
+        self.stroke_cache.retain(|id, _| visible_ids.contains(id));
 
         if let Some(samples) = active_samples {
             self.append_live_stroke(samples, viewport, &mut vertices, &mut indices);
