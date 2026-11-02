@@ -1020,16 +1020,6 @@ enum ProjectAction {
     SaveAs,
 }
 
-/// Asks before an action that would throw away an unsaved drawing.
-fn confirm_discard(message: &str) -> bool {
-    rfd::MessageDialog::new()
-        .set_title("Unsaved changes")
-        .set_description(message)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show()
-        == rfd::MessageDialogResult::Yes
-}
-
 fn append_rasm_extension(mut path: PathBuf) -> PathBuf {
     if !path
         .extension()
@@ -1069,11 +1059,25 @@ impl App {
         }
     }
 
+    /// Asks before an action that would throw away an unsaved drawing.
+    fn confirm_discard(&self, message: &str) -> bool {
+        let dialog = rfd::MessageDialog::new()
+            .set_title("Unsaved changes")
+            .set_description(message)
+            .set_buttons(rfd::MessageButtons::YesNo);
+        // Owned by the app window, otherwise the prompt can hide behind it.
+        let dialog = match &self.window {
+            Some(window) => dialog.set_parent(window.as_ref()),
+            None => dialog,
+        };
+        dialog.show() == rfd::MessageDialogResult::Yes
+    }
+
     fn handle_project_action(&mut self, action: ProjectAction) {
         lock(&self.input).finish_active_input();
         if matches!(action, ProjectAction::Open)
             && lock(&self.input).dirty
-            && !confirm_discard("Opening a project discards the current drawing.")
+            && !self.confirm_discard("Opening a project discards the current drawing.")
         {
             return;
         }
@@ -1180,8 +1184,10 @@ impl ApplicationHandler<AppEvent> for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
+                // The in-progress stroke becomes dirty only once it is committed.
+                lock(&self.input).finish_active_input();
                 if lock(&self.input).dirty
-                    && !confirm_discard("Closing discards the current drawing.")
+                    && !self.confirm_discard("Closing discards the current drawing.")
                 {
                     return;
                 }
