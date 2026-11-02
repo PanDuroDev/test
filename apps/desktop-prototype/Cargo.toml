@@ -11,9 +11,11 @@ description = "Windows-first window, WGPU surface, and pen-input integration pro
 bytemuck = { version = "1.24.0", features = ["derive"] }
 glam.workspace = true
 pollster = "0.4.0"
+rfd = "=0.15.4"
 rasm-engine-core = { path = "../../crates/engine-core" }
 rasm-engine-document = { path = "../../crates/engine-document" }
 rasm-engine-ink = { path = "../../crates/engine-ink" }
+rasm-engine-storage = { path = "../../crates/engine-storage" }
 wgpu = "=30.0.0"
 winit = "=0.30.13"
 

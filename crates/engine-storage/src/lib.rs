@@ -1,14 +1,14 @@
 //! Versioned, renderer-independent RASM project document codec.
 //!
-//! Version 1 uses a fixed binary header followed by a checksummed UTF-8 JSON
-//! payload. The codec does not perform filesystem I/O; atomic saves and recovery
-//! belong to a separate layer.
+//! The binary container remains version 1. JSON schema version 2 adds per-stroke
+//! RGBA colour while the decoder continues to accept schema version 1 files.
+//! The codec does not perform filesystem I/O; atomic saves belong to a separate layer.
 
 use std::fmt;
 
 use rasm_engine_document::{
-    BrushSnapshot, Document, DocumentError, DocumentSnapshot, LayerSnapshot, StrokeSampleSnapshot,
-    StrokeSnapshot,
+    BrushSnapshot, Document, DocumentError, DocumentSnapshot, LayerSnapshot, StrokeColor,
+    StrokeSampleSnapshot, StrokeSnapshot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,10 @@ pub const FILE_MAGIC: [u8; 4] = *b"RASM";
 pub const FILE_VERSION: u16 = 1;
 
 /// Current JSON document schema version.
-pub const SCHEMA_VERSION: u16 = 1;
+pub const SCHEMA_VERSION: u16 = 2;
+
+/// Oldest JSON schema version accepted by the decoder.
+pub const MIN_SUPPORTED_SCHEMA_VERSION: u16 = 1;
 
 /// Fixed header size: magic, version, flags, payload length, and CRC32.
 pub const HEADER_SIZE: usize = 20;
@@ -70,7 +73,7 @@ impl fmt::Display for StorageError {
 
 impl std::error::Error for StorageError {}
 
-/// Encodes a document as a version 1 project byte buffer.
+/// Encodes a document in the version 1 RASM container with the current JSON schema.
 pub fn encode(document: &Document) -> Result<Vec<u8>, StorageError> {
     let stored = StoredDocument::from_snapshot(document.snapshot())?;
     let payload = serde_json::to_vec(&stored).map_err(|_| StorageError::SerializationFailed)?;
@@ -121,7 +124,7 @@ pub fn decode(bytes: &[u8]) -> Result<Document, StorageError> {
 
     let stored: StoredDocument =
         serde_json::from_slice(payload).map_err(|_| StorageError::InvalidJson)?;
-    if stored.schema_version != SCHEMA_VERSION {
+    if !(MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION).contains(&stored.schema_version) {
         return Err(StorageError::UnsupportedSchemaVersion(
             stored.schema_version,
         ));
@@ -198,10 +201,16 @@ struct StoredLayer {
     strokes: Vec<StoredStroke>,
 }
 
+fn default_stroke_color() -> [f32; 4] {
+    StrokeColor::DEFAULT.rgba()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredStroke {
     id: u64,
+    #[serde(default = "default_stroke_color")]
+    color: [f32; 4],
     brush: StoredBrush,
     samples: Vec<StoredSample>,
 }
@@ -255,6 +264,7 @@ impl StoredDocument {
                             .collect();
                         Ok(StoredStroke {
                             id: stroke.id,
+                            color: stroke.color,
                             brush,
                             samples,
                         })
@@ -310,6 +320,7 @@ impl StoredDocument {
                             .collect();
                         Ok(StrokeSnapshot {
                             id: stroke.id,
+                            color: stroke.color,
                             brush,
                             samples,
                         })
@@ -338,7 +349,7 @@ impl StoredDocument {
 #[cfg(test)]
 mod tests {
     use glam::DVec2;
-    use rasm_engine_document::{Document, Edit, EditResult, History};
+    use rasm_engine_document::{Document, Edit, EditResult, History, StrokeColor};
     use rasm_engine_ink::{BrushConfig, StrokeSample};
 
     use super::{
@@ -364,13 +375,14 @@ mod tests {
         history
             .execute(
                 &mut document,
-                Edit::add_stroke(
+                Edit::add_stroke_with_color(
                     first_layer,
                     vec![
                         sample(10.25, 20.5, Some(0.2), 100),
                         sample(40.75, 60.125, Some(0.95), 250),
                     ],
                     BrushConfig::new(9.5, 0.08, 0.9, 0.25, 25_000).expect("brush"),
+                    StrokeColor::new([0.2, 0.4, 0.6, 0.8]).expect("stroke colour"),
                 ),
             )
             .expect("add stroke");
@@ -416,6 +428,52 @@ mod tests {
         let encoded = encode(&document).expect("encode");
         let decoded = decode(&encoded).expect("decode");
         assert_eq!(decoded, document);
+    }
+
+    #[test]
+    fn current_schema_round_trip_preserves_each_stroke_colour() {
+        let document = populated_document();
+        let encoded = encode(&document).expect("encode");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&encoded[HEADER_SIZE..]).expect("JSON payload");
+        assert_eq!(payload["schema_version"], SCHEMA_VERSION);
+        let decoded = decode(&encoded).expect("decode");
+        assert_eq!(decoded, document);
+        assert_eq!(
+            decoded.layers()[0].strokes()[0].color(),
+            StrokeColor::new([0.2, 0.4, 0.6, 0.8]).expect("colour")
+        );
+        assert_eq!(
+            decoded.layers()[1].strokes()[0].color(),
+            StrokeColor::DEFAULT
+        );
+    }
+
+    #[test]
+    fn schema_v1_files_without_stroke_colours_load_with_legacy_default() {
+        let document = populated_document();
+        let encoded = encode(&document).expect("encode");
+        let mut payload: serde_json::Value =
+            serde_json::from_slice(&encoded[HEADER_SIZE..]).expect("JSON payload");
+        payload["schema_version"] = serde_json::json!(1);
+        for layer in payload["layers"].as_array_mut().expect("layers") {
+            for stroke in layer["strokes"].as_array_mut().expect("strokes") {
+                stroke
+                    .as_object_mut()
+                    .expect("stroke object")
+                    .remove("color");
+            }
+        }
+
+        let legacy_bytes =
+            wrap_payload(&serde_json::to_vec(&payload).expect("serialize legacy payload"))
+                .expect("wrap legacy payload");
+        let decoded = decode(&legacy_bytes).expect("decode legacy schema");
+        for layer in decoded.layers() {
+            for stroke in layer.strokes() {
+                assert_eq!(stroke.color(), StrokeColor::DEFAULT);
+            }
+        }
     }
 
     #[test]
@@ -697,7 +755,9 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 mod file_tests {
     use super::{FileStorageError, load, save_atomic, write_atomic_bytes};
     use crate::encode;
-    use rasm_engine_document::{Document, Edit, History};
+    use glam::DVec2;
+    use rasm_engine_document::{Document, Edit, History, StrokeColor};
+    use rasm_engine_ink::{BrushConfig, StrokeSample};
     use std::fs;
     use std::io;
     use std::path::Path;
@@ -709,6 +769,21 @@ mod file_tests {
         history
             .execute(&mut document, Edit::rename_layer(layer, "Saved"))
             .expect("rename");
+        let samples = vec![
+            StrokeSample::new(DVec2::new(12.5, 23.75), Some(0.35), 10).expect("sample"),
+            StrokeSample::new(DVec2::new(42.0, 61.25), Some(0.9), 20).expect("sample"),
+        ];
+        history
+            .execute(
+                &mut document,
+                Edit::add_stroke_with_color(
+                    layer,
+                    samples,
+                    BrushConfig::default(),
+                    StrokeColor::new([0.2, 0.45, 0.8, 0.95]).expect("colour"),
+                ),
+            )
+            .expect("add coloured stroke");
         document
     }
 

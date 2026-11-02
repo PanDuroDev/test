@@ -18,6 +18,12 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7.0.1
 
+      - name: Install MSRV Rust
+        uses: dtolnay/rust-toolchain@1.87
+
+      - name: Check desktop dependency graph on MSRV
+        run: cargo +1.87 check -p rasm-desktop-prototype --all-targets
+
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:
