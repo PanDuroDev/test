@@ -65,6 +65,7 @@ struct InputState {
     mouse_epoch: Option<Instant>,
     brush: BrushSettings,
     current_path: Option<PathBuf>,
+    dirty: bool,
     status_message: Option<String>,
     title_dirty: bool,
     active_layer_id: LayerId,
@@ -121,6 +122,7 @@ impl InputState {
             mouse_epoch: None,
             brush,
             current_path: None,
+            dirty: false,
             status_message: Some("Ready. Unsaved project.".to_owned()),
             title_dirty: true,
             active_layer_id,
@@ -252,7 +254,8 @@ impl InputState {
             self.brush.brush(),
             color,
         ) {
-            Ok(Some(_)) | Ok(None) => {}
+            Ok(Some(_)) => self.dirty = true,
+            Ok(None) => {}
             Err(error) => self.status_message = Some(format!("Stroke rejected: {error}")),
         }
     }
@@ -300,6 +303,7 @@ impl InputState {
         self.active_layer_id = active_layer;
         self.panel_scroll = 0;
         self.current_path = Some(path.clone());
+        self.dirty = false;
         self.status_message = Some(format!("Opened {}", path.display()));
         self.title_dirty = true;
         Ok(())
@@ -309,12 +313,14 @@ impl InputState {
         match rasm_engine_storage::save_atomic(&path, self.canvas.document()) {
             Ok(()) => {
                 self.current_path = Some(path.clone());
+                self.dirty = false;
                 self.status_message = Some(format!("Saved {}", path.display()));
                 self.title_dirty = true;
                 Ok(())
             }
             Err(rasm_engine_storage::FileStorageError::DirectorySyncAfterCommit(error)) => {
                 self.current_path = Some(path.clone());
+                self.dirty = false;
                 let message = format!(
                     "Saved {}, but syncing its directory failed: {error}",
                     path.display()
@@ -368,6 +374,7 @@ impl InputState {
         }
         match self.canvas.undo() {
             Ok(()) => {
+                self.dirty = true;
                 self.reconcile_active_layer();
                 true
             }
@@ -384,6 +391,7 @@ impl InputState {
         }
         match self.canvas.redo() {
             Ok(()) => {
+                self.dirty = true;
                 self.reconcile_active_layer();
                 true
             }
@@ -444,6 +452,7 @@ impl InputState {
                     match self.canvas.add_layer(name) {
                         Ok(id) => {
                             self.active_layer_id = id;
+                            self.dirty = true;
                             self.title_dirty = true;
                         }
                         Err(error) => {
@@ -466,9 +475,12 @@ impl InputState {
                     else {
                         return true;
                     };
-                    if let Err(error) = self.canvas.set_layer_visibility(id, visible) {
-                        self.status_message =
-                            Some(format!("Cannot change layer visibility: {error}"));
+                    match self.canvas.set_layer_visibility(id, visible) {
+                        Ok(()) => self.dirty = true,
+                        Err(error) => {
+                            self.status_message =
+                                Some(format!("Cannot change layer visibility: {error}"))
+                        }
                     }
                     self.title_dirty = true;
                 }
@@ -489,6 +501,7 @@ impl InputState {
                                 self.active_layer_id = layers[index].id();
                             }
                             self.reconcile_active_layer();
+                            self.dirty = true;
                             self.title_dirty = true;
                         }
                         Err(error) => {
@@ -1007,6 +1020,16 @@ enum ProjectAction {
     SaveAs,
 }
 
+/// Asks before an action that would throw away an unsaved drawing.
+fn confirm_discard(message: &str) -> bool {
+    rfd::MessageDialog::new()
+        .set_title("Unsaved changes")
+        .set_description(message)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
+}
+
 fn append_rasm_extension(mut path: PathBuf) -> PathBuf {
     if !path
         .extension()
@@ -1048,6 +1071,12 @@ impl App {
 
     fn handle_project_action(&mut self, action: ProjectAction) {
         lock(&self.input).finish_active_input();
+        if matches!(action, ProjectAction::Open)
+            && lock(&self.input).dirty
+            && !confirm_discard("Opening a project discards the current drawing.")
+        {
+            return;
+        }
         let current_path = lock(&self.input).current_path.clone();
         let selected_path = match action {
             ProjectAction::Open => self.file_dialog("Open Rasm project").pick_file(),
@@ -1150,7 +1179,14 @@ impl ApplicationHandler<AppEvent> for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if lock(&self.input).dirty
+                    && !confirm_discard("Closing discards the current drawing.")
+                {
+                    return;
+                }
+                event_loop.exit()
+            }
             WindowEvent::Resized(size) => {
                 lock(&self.input).resize_viewport(size);
                 if let Some(renderer) = self.renderer.as_mut() {
@@ -1483,6 +1519,21 @@ unsafe fn handle_windows_pointer_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finishing_a_stroke_marks_the_project_dirty_until_it_is_saved() {
+        let mut input = InputState::with_demo_stroke(960.0, 640.0);
+        assert!(!input.dirty);
+
+        input.update_mouse_position(PhysicalPosition::new(480.0, 320.0));
+        input.begin_mouse();
+        input.update_mouse_position(PhysicalPosition::new(500.0, 330.0));
+        input.end_mouse();
+
+        assert!(input.dirty);
+        assert!(input.undo());
+        assert!(input.dirty, "undoing an edit still leaves unsaved changes");
+    }
 
     #[test]
     fn save_dialog_extension_is_appended_without_replacing_existing_suffix() {
